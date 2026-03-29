@@ -1,0 +1,10 @@
+libs/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+/build
+/*.cmake
+/tests/*.cmake
+*.bin
+*.elf
+*.hex

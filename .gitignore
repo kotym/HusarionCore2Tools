@@ -1,0 +1,56 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Git internals from imported trees (defensive)
+**/.git/
+**/.gitmodules
+
+# Build outputs and intermediate artifacts
+**/build/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/build.ninja
+**/rules.ninja
+**/.ninja_deps
+**/.ninja_log
+**/compile_commands.json
+
+# Compiler / linker artifacts
+**/*.o
+**/*.obj
+**/*.a
+**/*.so
+**/*.dylib
+**/*.dll
+**/*.lib
+**/*.exp
+**/*.pdb
+**/*.map
+**/*.d
+
+# Firmware and binary outputs
+**/*.elf
+**/*.bin
+**/*.hex
+**/*.lst
+**/*.srec
+
+# Logs and temp
+**/log/
+**/*.log
+**/*.tmp
+**/*.temp
+
+# Python artifacts
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Node / VSIX packaging artifacts
+**/node_modules/
+**/dist/
+**/*.vsix
