@@ -1,0 +1,88 @@
+﻿{
+  "name": "husarion-core2-tools",
+  "displayName": "Husarion CORE2 Development Tools",
+  "description": "Embedded development tools for Husarion CORE2 (STM32F4): project creation, CMake build/flash, IntelliSense configuration, and serial debugging.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.84.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages",
+    "Debuggers"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "husarionCore2.createProject",
+        "title": "Husarion: Create CORE2 Project"
+      },
+      {
+        "command": "husarionCore2.buildProject",
+        "title": "Husarion: Build Project (No Flash)"
+      },
+      {
+        "command": "husarionCore2.flashProject",
+        "title": "Husarion: Build + Flash Project to CORE2"
+      },
+      {
+        "command": "husarionCore2.flashOnly",
+        "title": "Husarion: Flash Latest HEX (No Build)"
+      },
+      {
+        "command": "husarionCore2.openConsole",
+        "title": "Husarion: Open CORE2 Serial Console"
+      },
+      {
+        "command": "husarionCore2.installDependencies",
+        "title": "Husarion: Install Required Toolchain and Components"
+      }
+    ],
+    "configuration": {
+      "title": "Husarion CORE2 Tools",
+      "properties": {
+        "husarionCore2.hframeworkPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional absolute path to hFramework root directory. Leave empty for auto-detection from project CMakeLists, env HFRAMEWORK_PATH, or sibling folders."
+        },
+        "husarionCore2.templatePath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional override path for project template directory. Leave empty to use <hframeworkPath>/project_template."
+        },
+        "husarionCore2.flasherPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional override path to core2-flasher executable. Leave empty to use <hframeworkPath>/tools/win/core2-flasher.exe."
+        },
+        "husarionCore2.boardType": {
+          "type": "string",
+          "default": "core2",
+          "description": "BOARD_TYPE used in CMake configure command."
+        },
+        "husarionCore2.hSensorsPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional absolute path to hSensors repository. Leave empty for auto-detection near hFramework."
+        },
+        "husarionCore2.hModulesPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional absolute path to hModules/modules repository. Leave empty for auto-detection near hFramework."
+        },
+        "husarionCore2.openProjectInNewWindow": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, opening a newly created project uses a new VS Code window."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "lint": "echo \"No lint configured\""
+  }
+}

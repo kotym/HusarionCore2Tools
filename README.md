@@ -1,5 +1,7 @@
 # Husarion CORE2 Tools Bundle
 
+This is an independent community-maintained distribution bundle and is NOT an official Husarion repository.
+
 This repository is a clean distribution bundle containing:
 
 - `hFramework`
@@ -10,7 +12,7 @@ It is prepared for in-house distribution and GitHub release packaging.
 
 ## Included tooling
 
-Inside `hFramework/tools`:
+Inside `tools`:
 
 - `install/install-inhouse.ps1` - one-command bootstrap for framework/modules + extension install
 - `install/bootstrap-hframework.ps1` - build/bootstrap helper
@@ -23,7 +25,7 @@ Inside `hFramework/tools`:
 From repo root:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\hFramework\tools\install\install-inhouse.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\install\install-inhouse.ps1
 ```
 
 ## Notes
