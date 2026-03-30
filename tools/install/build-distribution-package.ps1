@@ -143,17 +143,6 @@ try {
             ForEach-Object { Remove-Item $_.FullName -Force }
     }
 
-    $extraFilesToRemove = @(
-        'tools\vscode-husarion-core2\pack-local-extension.ps1',
-        'tools\vscode-husarion-core2\scripts\install-deps.ps1'
-    )
-    foreach ($relativePath in $extraFilesToRemove) {
-        $filePath = Join-Path $bundleRoot $relativePath
-        if (Test-Path $filePath) {
-            Remove-Item $filePath -Force
-        }
-    }
-
     $artifactPatterns = @('*.hex', '*.bin', '*.elf', '*.a', '*.obj', '*.o', '*.pdb')
     foreach ($pattern in $artifactPatterns) {
         Get-ChildItem -Path $bundleRoot -File -Recurse -Filter $pattern -ErrorAction SilentlyContinue |

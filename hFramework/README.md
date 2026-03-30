@@ -35,24 +35,24 @@ This section describes how to build hFramework yourself,
     ```
     Substitute `core2` with `core2mini` if building for CORE2mini.
 
-  ## In-house installation helpers
+  ## Helper Scripts
 
   For rollout to multiple machines in this bundle repo, use helper scripts from top-level `tools/install`.
 
-  1. Full setup (build framework + modules and install VS Code extension):
+  1. Install package (extension + toolchain):
 
     ```powershell
-    powershell -ExecutionPolicy Bypass -File ..\tools\install\install-inhouse.ps1
+    powershell -ExecutionPolicy Bypass -File ..\tools\install\install-package.ps1
     ```
 
-  2. Build-only bootstrap (no extension install):
-
-    ```powershell
-    powershell -ExecutionPolicy Bypass -File ..\tools\install\bootstrap-hframework.ps1 -BoardType core2
-    ```
-
-  3. Install/update VS Code extension only:
+  2. Install/update VS Code extension only (skip toolchain):
 
     ```powershell
     powershell -ExecutionPolicy Bypass -File ..\tools\install\install-package.ps1 -SkipToolchainInstall
+    ```
+
+  3. Refresh/check toolchain only:
+
+    ```powershell
+    powershell -ExecutionPolicy Bypass -File ..\tools\vscode-husarion-core2\scripts\install-or-refresh-toolchain.ps1
     ```

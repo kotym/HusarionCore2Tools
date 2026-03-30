@@ -19,16 +19,14 @@
 - Do not re-introduce extension/install tooling under `hFramework/tools` except board/runtime assets that belong to framework internals (e.g., `hFramework/tools/win`).
 
 ## Primary Workflows
-- Bootstrap and build in-house environment:
-  - `tools/install/install-inhouse.ps1`
-- Build framework/modules only:
-  - `tools/install/bootstrap-hframework.ps1`
 - Build distributable package:
   - `tools/install/build-distribution-package.ps1`
 - Install package (extension + toolchain):
   - `tools/install/install-package.ps1`
 - Package extension as VSIX:
   - `tools/vscode-husarion-core2/build-vsix.ps1`
+- Refresh/install toolchain only:
+  - `tools/vscode-husarion-core2/scripts/install-or-refresh-toolchain.ps1`
 
 ## Path Resolution Rules
 - Install scripts in `tools/install` must assume repository root at `..\..` from script location.

@@ -21,8 +21,6 @@ Primary scripts:
 3. Inside released package and used by extension command (toolchain refresh):
    - `tools/vscode-husarion-core2/scripts/install-or-refresh-toolchain.ps1`
 
-Compatibility wrappers are still present for old names, but these three are the supported interface.
-
 ## Quick start
 
 Build distributable package from source repo root:

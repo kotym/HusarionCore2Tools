@@ -38,10 +38,10 @@ The extension reads these VS Code settings:
 
 ## Quick Start
 
-Extract the installation package and run:
+Extract the installation package and run (or simply double-click `install.bat`):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install-package.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1
 ```
 
 Then restart VS Code and start using the Husarion commands!
@@ -52,6 +52,9 @@ Then restart VS Code and start using the Husarion commands!
 - Requires: CMake, Ninja, and GNU ARM Embedded Toolchain (auto-installed if missing)
 - Works with hFramework, hSensors, and hModules modules
 
+## Manual Installation
+
+If the package installer fails, you can manually copy the extension folder to:
 
 - `%USERPROFILE%\.vscode\extensions`
 

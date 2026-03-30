@@ -3,6 +3,4 @@
 .vscode/**
 dist/**
 node_modules/**
-pack-local-extension.ps1
 build-vsix.ps1
-scripts/install-deps.ps1
