@@ -5,9 +5,9 @@ This file is an engineering notice and not legal advice.
 
 Included upstream components
 
-- hFramework: see hFramework/LICENSE.md (MIT)
-- hSensors: see hSensors/LICENSE.md (mixed/restricted status in file headers)
-- hModules: see hModules/LICENSE.md (mixed status in file headers)
+- **hFramework** ([github.com/husarion/hFramework](https://github.com/husarion/hFramework)): see hFramework/LICENSE.md (MIT)
+- **hSensors** ([github.com/husarion/hSensors](https://github.com/husarion/hSensors)): see hSensors/LICENSE.md (mixed/restricted status in file headers)
+- **hModules** ([github.com/husarion/modules](https://github.com/husarion/modules)): see hModules/LICENSE.md (mixed status in file headers)
 
 Notable third-party content under hFramework/third-party
 

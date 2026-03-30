@@ -118,7 +118,7 @@ try {
         Where-Object { $_.Name -notin @('install-package.ps1') } |
         ForEach-Object { Remove-Item $_.FullName -Force }
 
-    $dirsToRemoveByName = @('.git', '.github', '.vs', '.vscode', 'node_modules', 'build', 'docs', 'tests', 'examples', 'py-connector', 'devtools', 'project_arduino')
+    $dirsToRemoveByName = @('.git', '.github', '.vs', '.vscode', 'node_modules', 'build')
     foreach ($dirName in $dirsToRemoveByName) {
         Get-ChildItem -Path $bundleRoot -Directory -Recurse -Force -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -ieq $dirName } |
@@ -136,7 +136,14 @@ try {
             ForEach-Object { Remove-Item $_.FullName -Recurse -Force }
     }
 
-    $filesToRemoveByName = @('.gitignore', '.gitattributes', '.editorconfig')
+    $filesToRemoveByName = @(
+        '.gitignore',
+        '.gitattributes',
+        '.editorconfig',
+        '.vscodeignore',
+        'build-vsix.ps1',
+        'log'
+    )
     foreach ($fileName in $filesToRemoveByName) {
         Get-ChildItem -Path $bundleRoot -File -Recurse -Force -ErrorAction SilentlyContinue |
             Where-Object { $_.Name -ieq $fileName } |

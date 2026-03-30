@@ -1,26 +1,35 @@
-# Husarion CORE2 Development Tools (VS Code Extension)
+# Husarion CORE2 Development Tools
 
-This VS Code extension provides a streamlined development workflow for Husarion CORE2 embedded development (STM32F4 CPU).
+VS Code extension for Husarion CORE2 project creation, build, flash, and serial console workflows.
 
-**Note:** This extension is community-maintained and not an official Husarion release.
+This extension is community-maintained and not an official Husarion release.
 
-## Features
+## Requirements
 
-### Available Commands
+- Windows
+- PowerShell 5.1+
+- VS Code
 
-1. **Create CORE2 Project** - Sets up a new embedded project with proper CMakeLists.txt configuration
-2. **Build Project (No Flash)** - Compiles your project using CMake and Ninja
-3. **Build + Flash Project to CORE2** - Builds and automatically flashes the HEX file to your board
-4. **Flash Latest HEX (No Build)** - Programs the most recent HEX file without rebuilding
-5. **Open CORE2 Serial Console** - Opens a serial terminal for debugging and monitor output
-6. **Install Required Toolchain and Components** - Checks and installs essential development tools (CMake, Ninja, ARM compiler)
+The extension can install missing build tools (CMake, Ninja, GNU Arm Embedded Toolchain) using package managers when available.
 
-## How It Works
+## Installation
 
-- **Project Creation:** Copies a template CMakeLists.txt and configures paths automatically
-- **Build System:** Uses CMake + Ninja for fast, incremental builds
-- **Flashing:** Integrates with the STM32F4 flasher utility for seamless programming
-- **Toolchain Management:** Auto-detects or installs required compilers and build tools
+Install from the HusarionCore2Tools package by running:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1
+```
+
+Then restart VS Code.
+
+## Commands
+
+- `Husarion: Create CORE2 Project`
+- `Husarion: Build Project (No Flash)`
+- `Husarion: Build + Flash Project to CORE2`
+- `Husarion: Flash Latest HEX (No Build)`
+- `Husarion: Open CORE2 Serial Console`
+- `Husarion: Install Required Toolchain and Components`
 
 ## Configuration
 
@@ -34,50 +43,16 @@ The extension reads these VS Code settings:
 | `husarionCore2.boardType` | `core2` | Target board type |
 | `husarionCore2.hSensorsPath` | auto | Path to hSensors module |
 | `husarionCore2.hModulesPath` | auto | Path to hModules module |
-| `husarionCore2.openProjectInNewWindow` | `false` | Open new projects in separate window |
+| `husarionCore2.openProjectInNewWindow` | `false` | Open new projects in a separate window |
 
-## Quick Start
+## Typical Workflow
 
-Extract the installation package and run (or simply double-click `install.bat`):
+1. Run `Husarion: Create CORE2 Project`.
+2. Flash with `Husarion: Build + Flash Project to CORE2`.
+3. Use `Husarion: Open CORE2 Serial Console` for runtime logs.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1
-```
+## Troubleshooting
 
-Then restart VS Code and start using the Husarion commands!
-
-## Notes
-
-- This extension runs exclusively on Windows with PowerShell 5.1+
-- Requires: CMake, Ninja, and GNU ARM Embedded Toolchain (auto-installed if missing)
-- Works with hFramework, hSensors, and hModules modules
-
-## Manual Installation
-
-If the package installer fails, you can manually copy the extension folder to:
-
-- `%USERPROFILE%\.vscode\extensions`
-
-Restart VS Code after copying.
-
-## Build VSIX package
-
-To create a distributable `.vsix` package:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build-vsix.ps1
-```
-
-The resulting file is created in `dist` as:
-
-- `<publisher>.<name>-<version>.vsix`
-
-Install on target machine:
-
-```powershell
-code --install-extension .\dist\<publisher>.<name>-<version>.vsix --force
-```
-
-After installation, run command palette action:
-
-- `Husarion: Install Required Toolchain and Components`
+- If commands are missing in the Command Palette, restart VS Code.
+- If build tools are missing, run `Husarion: Install Required Toolchain and Components`.
+- If toolchain was just installed, restart VS Code so PATH updates are picked up.

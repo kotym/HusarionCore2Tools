@@ -1,127 +1,93 @@
 # Husarion CORE2 Tools Bundle
 
-This is an independent community-maintained distribution bundle and is NOT an official Husarion repository.
+Community-maintained Husarion CORE2 bundle for packaging and deployment. This is not an official Husarion repository.
 
-This repository is a clean distribution bundle containing:
+## Repository Contents
 
-- `hFramework`
-- `hSensors`
-- `hModules`
+This bundle imports three upstream Husarion repositories:
 
-It is prepared for in-house distribution and GitHub release packaging.
+- `hFramework`: core framework and STM32 port sources ([upstream](https://github.com/husarion/hFramework))
+- `hSensors`: optional sensor module ([upstream](https://github.com/husarion/hSensors))
+- `hModules`: optional module collection ([upstream](https://github.com/husarion/modules))
 
-## Included tooling
+Local tooling:
 
-Primary scripts:
+- `tools/install`: distribution builder and package installer.
+- `tools/vscode-husarion-core2`: VS Code extension used by end users.
 
-1. Source repo (release builder):
-   - `tools/install/build-distribution-package.ps1`
-2. Inside released package (full install):
-   - `tools/install/install-package.ps1`
-3. Inside released package and used by extension command (toolchain refresh):
-   - `tools/vscode-husarion-core2/scripts/install-or-refresh-toolchain.ps1`
+## Prerequisites (Development Machine)
 
-## Quick start
+- Windows PowerShell 5.1+
+- Node.js LTS (`npx` available) for VSIX packaging
+- CMake, Ninja, and GNU Arm Embedded Toolchain for local compile checks
 
-Build distributable package from source repo root:
+## Build Distribution Package
+
+From repository root:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\install\build-distribution-package.ps1 -Version vX.Y.Z
 ```
 
-Then users extract the generated zip and **either click `install.bat`** or run:
+Output:
+
+- `dist\HusarionCore2Tools-vX.Y.Z.zip`
+
+The produced ZIP is end-user focused. It includes runtime/install assets and excludes development-only artifacts.
+
+## Install and Use Package (End User)
+
+1. Extract `HusarionCore2Tools-vX.Y.Z.zip`.
+2. Run `install.bat` in the extracted root, or run:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1
 ```
 
-## Notes
+3. Restart VS Code.
+4. Use Command Palette commands starting with `Husarion:`.
 
-- Build outputs, cache files, VSIX artifacts, and temporary files are excluded by the top-level `.gitignore`.
-- This repo is intended to be the canonical clean source bundle for release creation.
+## Build VS Code Extension (Development)
 
-## GitHub release recommendations
+From `tools\vscode-husarion-core2`:
 
-Upload one artifact created by `build-distribution-package.ps1`:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build-vsix.ps1
+```
 
-- `HusarionCore2Tools-vX.Y.Z.zip`
+Output:
 
-The package is intentionally stripped for use (not development):
+- `tools\vscode-husarion-core2\dist\<publisher>.<name>-<version>.vsix`
 
-- removed: `.github`, `.git*`, docs/tests/examples/devtools/build caches
-- kept: required framework/module sources, Windows flasher, extension runtime, and install scripts
+Install locally for test:
+
+```powershell
+code --install-extension .\tools\vscode-husarion-core2\dist\<publisher>.<name>-<version>.vsix --force
+```
+
+## Key Scripts
+
+- Source release builder: `tools\install\build-distribution-package.ps1`
+- Package installer: `tools\install\install-package.ps1`
+- Toolchain refresh helper: `tools\vscode-husarion-core2\scripts\install-or-refresh-toolchain.ps1`
+- Extension VSIX builder: `tools\vscode-husarion-core2\build-vsix.ps1`
 
 ## Troubleshooting
 
-### Error: "Cannot bind parameter 'Scope'. Cannot convert value Bypass..."
+### PowerShell command errors about `ExecutionPolicy`
 
-**Cause:** The command is missing the `powershell` prefix.
-
-**Wrong:**
-```powershell
-ExecutionPolicy Bypass -File install-package.ps1
-```
-
-**Correct:**
-```powershell
-powershell -ExecutionPolicy Bypass -File install-package.ps1
-```
-
-The `-ExecutionPolicy Bypass` flag is an argument for `powershell.exe` itself. Without the `powershell` prefix, PowerShell tries to interpret `ExecutionPolicy` as a command, which fails.
-
-### "Checking required toolchain commands" takes a long time
-
-**Cause:** On first run, `winget` initializes its package index and catalog in the background, which can take 30-60 seconds or longer depending on network speed and disk performance.
-
-**Solution:** This is normal. The script displays progress for each check and installation. Wait for it to complete. Subsequent runs will be much faster.
-
-### Extension not appearing in VS Code command palette
-
-**Cause:** The extension folder may not have been installed correctly, or VS Code needs to rediscover extensions.
-
-**Solution:**
-
-1. Verify the extension folder exists at:
-   ```
-   %USERPROFILE%\.vscode\extensions\local.husarion-core2-tools-0.1.0
-   ```
-
-2. Check that it contains these files:
-   - `package.json`
-   - `extension.js`
-   - `README.md`
-   - `scripts/` folder
-
-3. Restart VS Code completely (File → Exit, then reopen)
-
-4. Open Command Palette (Ctrl+Shift+P) and search for: `Husarion`
-
-   You should see commands like:
-   - `Husarion: Create CORE2 Project`
-   - `Husarion: Build Project (No Flash)`
-   - etc.
-
-5. If still not found, try:
-   ```powershell
-   # Reinstall extension only (skip toolchain)
-   powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1 -SkipToolchainInstall -KeepOtherExtensionVersions
-   ```
-
-### Toolchain installation fails (winget not found, choco not found)
-
-**Cause:** Neither `winget` nor Chocolatey package managers are installed on your system.
-
-**Solution:** Install packages manually:
-
-1. **CMake:** https://cmake.org/download/
-2. **Ninja:** https://github.com/ninja-build/ninja/releases (download binary and add to PATH)
-3. **GNU Arm Embedded Toolchain:** https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads
-
-After installation, add all three to your system PATH and restart your terminal/VS Code:
+Always start with `powershell`:
 
 ```powershell
-# Verify installation (should return version)
-cmake --version
-ninja --version
-arm-none-eabi-g++ --version
+powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1
 ```
+
+### Toolchain install is slow on first run
+
+`winget` first-run initialization can take noticeable time in clean environments.
+
+### Extension commands not visible
+
+1. Verify extension exists in `%USERPROFILE%\.vscode\extensions`.
+2. Restart VS Code fully.
+3. Re-run installer with `-SkipToolchainInstall` if needed.
