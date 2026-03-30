@@ -1,9 +1,123 @@
 ﻿const vscode = require("vscode");
 const cp = require("child_process");
 const fsp = require("fs/promises");
+const fs = require("fs");
 const path = require("path");
 
 let outputChannel;
+
+function getFirstLine(text) {
+  if (!text) return "";
+  const line = text.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
+  return line || "";
+}
+
+function tryWhereExe(name) {
+  try {
+    const result = cp.spawnSync("where", [name], { encoding: "utf8", windowsHide: true, shell: true });
+    if (result.status === 0) {
+      const first = getFirstLine(result.stdout || "");
+      if (first) {
+        return first;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return "";
+}
+
+function resolveExecutablePath(name, candidates = []) {
+  const fromWhere = tryWhereExe(name);
+  if (fromWhere) {
+    return fromWhere;
+  }
+
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  // Fallback to command name for environments where PATH is configured at runtime.
+  return name;
+}
+
+function findFileUnderRoots(fileName, roots, maxDepth = 5) {
+  const target = fileName.toLowerCase();
+
+  for (const root of roots) {
+    if (!root || !fs.existsSync(root)) {
+      continue;
+    }
+
+    const stack = [{ dir: root, depth: 0 }];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current) {
+        continue;
+      }
+
+      let entries = [];
+      try {
+        entries = fs.readdirSync(current.dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      for (const entry of entries) {
+        const fullPath = path.join(current.dir, entry.name);
+        if (entry.isFile() && entry.name.toLowerCase() === target) {
+          return fullPath;
+        }
+        if (entry.isDirectory() && current.depth < maxDepth) {
+          stack.push({ dir: fullPath, depth: current.depth + 1 });
+        }
+      }
+    }
+  }
+
+  return "";
+}
+
+function getResolvedToolPaths() {
+  const wingetLinksDir = process.env.LOCALAPPDATA
+    ? path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Links")
+    : "";
+
+  const armRoots = [
+    "C:\\Program Files (x86)\\Arm GNU Toolchain arm-none-eabi",
+    "C:\\Program Files\\Arm GNU Toolchain arm-none-eabi",
+    "C:\\Program Files (x86)\\GNU Arm Embedded Toolchain",
+    "C:\\Program Files\\GNU Arm Embedded Toolchain"
+  ];
+
+  const autoArmGpp = findFileUnderRoots("arm-none-eabi-g++.exe", armRoots);
+  const autoArmGcc = findFileUnderRoots("arm-none-eabi-gcc.exe", armRoots);
+
+  return {
+    cmake: resolveExecutablePath("cmake", [
+      wingetLinksDir ? path.join(wingetLinksDir, "cmake.exe") : "",
+      "C:\\Program Files\\CMake\\bin\\cmake.exe",
+      "C:\\ProgramData\\chocolatey\\bin\\cmake.exe"
+    ]),
+    ninja: resolveExecutablePath("ninja", [
+      wingetLinksDir ? path.join(wingetLinksDir, "ninja.exe") : "",
+      "C:\\ProgramData\\chocolatey\\bin\\ninja.exe",
+      "C:\\Program Files\\ninja\\ninja.exe"
+    ]),
+    armGpp: resolveExecutablePath("arm-none-eabi-g++", [
+      wingetLinksDir ? path.join(wingetLinksDir, "arm-none-eabi-g++.exe") : "",
+      "C:\\ProgramData\\chocolatey\\bin\\arm-none-eabi-g++.exe",
+      autoArmGpp
+    ]),
+    armGcc: resolveExecutablePath("arm-none-eabi-gcc", [
+      wingetLinksDir ? path.join(wingetLinksDir, "arm-none-eabi-gcc.exe") : "",
+      "C:\\ProgramData\\chocolatey\\bin\\arm-none-eabi-gcc.exe",
+      autoArmGcc
+    ])
+  };
+}
 
 function getConfig() {
   const cfg = vscode.workspace.getConfiguration("husarionCore2");
@@ -48,6 +162,29 @@ async function readTextIfExists(filePath) {
     return "";
   }
   return fsp.readFile(filePath, "utf8");
+}
+
+async function getFileMtimeMs(filePath) {
+  try {
+    const st = await fsp.stat(filePath);
+    return st.mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+async function shouldRunCmakeConfigure(sourceDir, buildDir) {
+  const cachePath = path.join(buildDir, "CMakeCache.txt");
+  const ninjaPath = path.join(buildDir, "build.ninja");
+  if (!(await pathExists(cachePath)) || !(await pathExists(ninjaPath))) {
+    return true;
+  }
+
+  const sourceCmake = path.join(sourceDir, "CMakeLists.txt");
+  const cacheMtime = await getFileMtimeMs(cachePath);
+  const sourceCmakeMtime = await getFileMtimeMs(sourceCmake);
+
+  return sourceCmakeMtime > cacheMtime;
 }
 
 async function resolveHframeworkPath(projectRoot, cfg) {
@@ -185,6 +322,47 @@ async function patchProjectCMake(projectDir, projectName, hframeworkPath) {
   await fsp.writeFile(cmakePath, text, "utf8");
 }
 
+function upsertCMakeSetVar(text, varName, value) {
+  const normalized = normalizeForCMake(value);
+  const re = new RegExp(`^\\s*set\\s*\\(\\s*${varName}\\s+[^\\)]*\\)\\s*$`, "gim");
+
+  if (re.test(text)) {
+    return text.replace(re, `set(${varName} "${normalized}")`);
+  }
+
+  const includeRe = /include\s*\(\s*\$\{HFRAMEWORK_PATH\}\/hFramework\.cmake\s*\)/i;
+  if (includeRe.test(text)) {
+    return text.replace(includeRe, `set(${varName} "${normalized}")\n$&`);
+  }
+
+  return `set(${varName} "${normalized}")\n${text}`;
+}
+
+async function syncProjectCMakePaths(projectRoot, cfg, resolvedModulePaths) {
+  const cmakePath = path.join(projectRoot, "CMakeLists.txt");
+  if (!(await pathExists(cmakePath))) {
+    return;
+  }
+
+  let text = await fsp.readFile(cmakePath, "utf8");
+  const original = text;
+
+  text = upsertCMakeSetVar(text, "HFRAMEWORK_PATH", cfg.hframeworkPath);
+
+  if (resolvedModulePaths.hSensors) {
+    text = upsertCMakeSetVar(text, "HSENSORS_PATH", resolvedModulePaths.hSensors);
+  }
+
+  if (resolvedModulePaths.hModules) {
+    text = upsertCMakeSetVar(text, "HMODULES_PATH", resolvedModulePaths.hModules);
+  }
+
+  if (text !== original) {
+    await fsp.writeFile(cmakePath, text, "utf8");
+    outputChannel.appendLine(`Updated project CMake paths in ${cmakePath}`);
+  }
+}
+
 function runCommand(command, args, cwd) {
   return new Promise((resolve, reject) => {
     const pretty = `${command} ${args.join(" ")}`;
@@ -207,6 +385,11 @@ function runCommand(command, args, cwd) {
       }
     });
   });
+}
+
+function isMissingLibraryLinkError(err) {
+  const msg = String(err && err.message ? err.message : err || "");
+  return /cannot find -lhFramework|cannot find -lhSensors|cannot find -lhModules/i.test(msg);
 }
 
 function getHexTargetNameFromCMake(cmakeText, fallbackName) {
@@ -252,20 +435,69 @@ async function resolveModulePath(moduleName, cfg) {
 }
 
 async function ensureModuleBuilt(moduleName, modulePath, cfg) {
+  const tools = getResolvedToolPaths();
   const moduleBuildDir = path.join(modulePath, "build", `stm32_${cfg.boardType}_1.0.0`);
+  const expectedLib = path.join(moduleBuildDir, `lib${moduleName}.a`);
+
   await ensureDir(moduleBuildDir);
 
-  await runCommand("cmake", [
-    "-S", modulePath,
-    "-B", moduleBuildDir,
-    "-GNinja",
-    `-DBOARD_TYPE=${cfg.boardType}`,
-    `-DHFRAMEWORK_PATH=${cfg.hframeworkPath}`,
-    "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
-  ], modulePath);
+  if (await shouldRunCmakeConfigure(modulePath, moduleBuildDir)) {
+    await runCommand(tools.cmake, [
+      "-S", modulePath,
+      "-B", moduleBuildDir,
+      "-GNinja",
+      `-DCMAKE_MAKE_PROGRAM=${tools.ninja}`,
+      `-DCMAKE_C_COMPILER=${tools.armGcc}`,
+      `-DCMAKE_CXX_COMPILER=${tools.armGpp}`,
+      `-DCMAKE_ASM_COMPILER=${tools.armGcc}`,
+      `-DBOARD_TYPE=${cfg.boardType}`,
+      `-DHFRAMEWORK_PATH=${cfg.hframeworkPath}`,
+      "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+    ], modulePath);
+  }
 
-  await runCommand("ninja", ["-C", moduleBuildDir], modulePath);
-  outputChannel.appendLine(`Built module ${moduleName} at ${moduleBuildDir}`);
+  // Ninja performs incremental builds; this will only rebuild if sources changed.
+  await runCommand(tools.ninja, ["-C", moduleBuildDir, moduleName], modulePath);
+
+  if (!(await pathExists(expectedLib))) {
+    throw new Error(`Module ${moduleName} build completed but library not found: ${expectedLib}`);
+  }
+  outputChannel.appendLine(`Module ${moduleName} is up to date at ${expectedLib}`);
+}
+
+async function ensureFrameworkBuilt(cfg) {
+  const tools = getResolvedToolPaths();
+  if (!path.isAbsolute(tools.armGcc) || !path.isAbsolute(tools.armGpp)) {
+    throw new Error("Could not resolve full paths to arm-none-eabi-gcc/g++. Please run Husarion: Install Required Toolchain and Components, then restart VS Code.");
+  }
+  const frameworkPath = cfg.hframeworkPath;
+  const frameworkBuildDir = path.join(frameworkPath, "build", `stm32_${cfg.boardType}_1.0.0`);
+  const expectedLib = path.join(frameworkBuildDir, "libhFramework.a");
+
+  await ensureDir(frameworkBuildDir);
+
+  if (await shouldRunCmakeConfigure(frameworkPath, frameworkBuildDir)) {
+    await runCommand(tools.cmake, [
+      "-S", frameworkPath,
+      "-B", frameworkBuildDir,
+      "-GNinja",
+      `-DCMAKE_MAKE_PROGRAM=${tools.ninja}`,
+      `-DCMAKE_C_COMPILER=${tools.armGcc}`,
+      `-DCMAKE_CXX_COMPILER=${tools.armGpp}`,
+      `-DCMAKE_ASM_COMPILER=${tools.armGcc}`,
+      `-DBOARD_TYPE=${cfg.boardType}`,
+      "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+    ], frameworkPath);
+  }
+
+  // Ninja performs incremental builds; this will only rebuild if sources changed.
+  await runCommand(tools.ninja, ["-C", frameworkBuildDir, "hFramework"], frameworkPath);
+
+  if (!(await pathExists(expectedLib))) {
+    throw new Error(`hFramework build completed but library not found: ${expectedLib}`);
+  }
+
+  outputChannel.appendLine(`hFramework is up to date at ${expectedLib}`);
 }
 
 function buildCppToolsConfiguration(name, includePath, compilerPath, intelliSenseMode) {
@@ -285,7 +517,7 @@ function buildCppToolsConfiguration(name, includePath, compilerPath, intelliSens
   };
 }
 
-async function ensureCppToolsConfig(projectRoot, cfg, moduleIncludePaths) {
+async function ensureCppToolsConfig(projectRoot, cfg, moduleIncludePaths, compilerPath) {
   const vscodeDir = path.join(projectRoot, ".vscode");
   await ensureDir(vscodeDir);
 
@@ -316,7 +548,7 @@ async function ensureCppToolsConfig(projectRoot, cfg, moduleIncludePaths) {
   const config = {
     version: 4,
     configurations: [
-      buildCppToolsConfiguration("Win32", includePath, "arm-none-eabi-g++.exe", "windows-gcc-x64"),
+      buildCppToolsConfiguration("Win32", includePath, compilerPath || "arm-none-eabi-g++.exe", "windows-gcc-x64"),
       buildCppToolsConfiguration("Linux", includePath, "/usr/bin/arm-none-eabi-g++", "linux-gcc-x64"),
       buildCppToolsConfiguration("Mac", includePath, "/usr/local/bin/arm-none-eabi-g++", "macos-gcc-x64")
     ]
@@ -342,19 +574,34 @@ async function buildResolvedConfig(projectRoot) {
 }
 
 async function configureAndBuildProject(projectRoot, cfg) {
+  const tools = getResolvedToolPaths();
+  if (!path.isAbsolute(tools.armGcc) || !path.isAbsolute(tools.armGpp)) {
+    throw new Error("Could not resolve full paths to arm-none-eabi-gcc/g++. Please run Husarion: Install Required Toolchain and Components, then restart VS Code.");
+  }
   const buildDir = path.join(projectRoot, "build");
   await ensureDir(buildDir);
 
   const cmakePath = path.join(projectRoot, "CMakeLists.txt");
-  const cmakeText = await readTextIfExists(cmakePath);
+  let cmakeText = await readTextIfExists(cmakePath);
   const enabledModules = getEnabledModulesFromCMake(cmakeText);
   const moduleIncludePaths = [];
 
-  for (const moduleName of enabledModules) {
-    if (moduleName !== "hSensors" && moduleName !== "hModules") {
+  await ensureFrameworkBuilt(cfg);
+
+  const resolvedModulePaths = {
+    hSensors: await resolveModulePath("hSensors", cfg),
+    hModules: await resolveModulePath("hModules", cfg)
+  };
+
+  await syncProjectCMakePaths(projectRoot, cfg, resolvedModulePaths);
+  cmakeText = await readTextIfExists(cmakePath);
+
+  const moduleBuildOrder = ["hSensors", "hModules"];
+  for (const moduleName of moduleBuildOrder) {
+    if (enabledModules.length > 0 && !enabledModules.includes(moduleName)) {
       continue;
     }
-    const modulePath = await resolveModulePath(moduleName, cfg);
+    const modulePath = resolvedModulePaths[moduleName];
     if (!modulePath) {
       outputChannel.appendLine(`Module ${moduleName} not found locally, skipping build`);
       continue;
@@ -363,19 +610,56 @@ async function configureAndBuildProject(projectRoot, cfg) {
     moduleIncludePaths.push(path.join(modulePath, "include"));
   }
 
-  await runCommand("cmake", [
+  const cmakeArgs = [
     "-S", projectRoot,
     "-B", buildDir,
     "-GNinja",
+    `-DCMAKE_MAKE_PROGRAM=${tools.ninja}`,
+    `-DCMAKE_C_COMPILER=${tools.armGcc}`,
+    `-DCMAKE_CXX_COMPILER=${tools.armGpp}`,
+    `-DCMAKE_ASM_COMPILER=${tools.armGcc}`,
     `-DBOARD_TYPE=${cfg.boardType}`,
+    `-DHFRAMEWORK_PATH=${cfg.hframeworkPath}`,
     "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
     "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
-  ], projectRoot);
+  ];
 
-  await ensureCppToolsConfig(projectRoot, cfg, moduleIncludePaths);
+  if (resolvedModulePaths.hSensors) {
+    cmakeArgs.push(`-DHSENSORS_PATH=${resolvedModulePaths.hSensors}`);
+  } else {
+    cmakeArgs.push("-UHSENSORS_PATH");
+  }
+
+  if (resolvedModulePaths.hModules) {
+    cmakeArgs.push(`-DHMODULES_PATH=${resolvedModulePaths.hModules}`);
+  } else {
+    cmakeArgs.push("-UHMODULES_PATH");
+  }
+
+  await runCommand(tools.cmake, cmakeArgs, projectRoot);
+
+  await ensureCppToolsConfig(projectRoot, cfg, moduleIncludePaths, tools.armGpp);
 
   const targetName = getHexTargetNameFromCMake(cmakeText, path.basename(projectRoot));
-  await runCommand("ninja", ["-C", buildDir, `${targetName}.hex`], projectRoot);
+  try {
+    await runCommand(tools.ninja, ["-C", buildDir, `${targetName}.hex`], projectRoot);
+  } catch (err) {
+    if (!isMissingLibraryLinkError(err)) {
+      throw err;
+    }
+
+    outputChannel.appendLine("Detected missing static libraries during link. Rebuilding core libraries and retrying once...");
+
+    await ensureFrameworkBuilt(cfg);
+    for (const moduleName of ["hSensors", "hModules"]) {
+      const modulePath = await resolveModulePath(moduleName, cfg);
+      if (modulePath) {
+        await ensureModuleBuilt(moduleName, modulePath, cfg);
+      }
+    }
+
+    await runCommand(tools.ninja, ["-C", buildDir, `${targetName}.hex`], projectRoot);
+  }
   return buildDir;
 }
 
@@ -436,7 +720,8 @@ async function createProjectCommand() {
 
   await copyDirectory(templatePath, projectDir);
   await patchProjectCMake(projectDir, projectName, hframeworkPath);
-  await ensureCppToolsConfig(projectDir, resolved, []);
+  const tools = getResolvedToolPaths();
+  await ensureCppToolsConfig(projectDir, resolved, [], tools.armGpp);
 
   const openNow = await vscode.window.showInformationMessage(
     `Created project at ${projectDir}`,

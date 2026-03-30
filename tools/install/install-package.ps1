@@ -14,6 +14,53 @@ $extRoot = Join-Path $repoRoot 'tools\vscode-husarion-core2'
 $packageJsonPath = Join-Path $extRoot 'package.json'
 $depsScript = Join-Path $extRoot 'scripts\install-or-refresh-toolchain.ps1'
 
+function Set-DefaultHusarionSettings {
+    $vscodeUserDir = Join-Path $env:APPDATA 'Code\User'
+    $settingsPath = Join-Path $vscodeUserDir 'settings.json'
+
+    New-Item -ItemType Directory -Path $vscodeUserDir -Force | Out-Null
+
+    $hfPath = Join-Path $repoRoot 'hFramework'
+    $hsPath = Join-Path $repoRoot 'hSensors'
+    $hmPath = Join-Path $repoRoot 'hModules'
+
+    if (Test-Path $hfPath) {
+        [Environment]::SetEnvironmentVariable('HFRAMEWORK_PATH', $hfPath, 'User')
+        Write-Host '==> Set user environment variable HFRAMEWORK_PATH'
+    }
+
+    $settings = @{}
+    if (Test-Path $settingsPath) {
+        $raw = Get-Content $settingsPath -Raw
+        if ($raw -and $raw.Trim()) {
+            try {
+                $parsed = $raw | ConvertFrom-Json
+                foreach ($p in $parsed.PSObject.Properties) {
+                    $settings[$p.Name] = $p.Value
+                }
+            }
+            catch {
+                Write-Host "[WARN] Could not parse VS Code settings.json, skipping settings update (HFRAMEWORK_PATH env var was set)." -ForegroundColor Yellow
+                return
+            }
+        }
+    }
+
+    if (Test-Path $hfPath) {
+        $settings['husarionCore2.hframeworkPath'] = $hfPath
+    }
+    if (Test-Path $hsPath) {
+        $settings['husarionCore2.hSensorsPath'] = $hsPath
+    }
+    if (Test-Path $hmPath) {
+        $settings['husarionCore2.hModulesPath'] = $hmPath
+    }
+
+    $settingsJson = $settings | ConvertTo-Json -Depth 10
+    Set-Content -Path $settingsPath -Value $settingsJson -Encoding UTF8
+    Write-Host "==> Updated VS Code defaults in $settingsPath"
+}
+
 function Get-CodeCliPath {
     $candidates = @(
         'code',
@@ -127,6 +174,7 @@ Write-Host "==> Using repo root: $repoRoot"
 
 if (-not $SkipExtensionInstall) {
     Install-LocalExtension -KeepOtherVersions:$KeepOtherExtensionVersions
+    Set-DefaultHusarionSettings
 }
 
 if (-not $SkipToolchainInstall) {

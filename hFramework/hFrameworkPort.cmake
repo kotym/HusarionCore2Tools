@@ -13,9 +13,15 @@ set(CMAKE_STATIC_LIBRARY_PREFIX_CXX "lib")
 set(CMAKE_STATIC_LIBRARY_PREFIX_C "lib")
 
 macro(disable_compiler_detection)
-  set(CMAKE_C_COMPILER ${prefix}gcc${exesuffix})
-  set(CMAKE_ASM_COMPILER ${prefix}gcc${exesuffix})
-  set(CMAKE_CXX_COMPILER ${prefix}g++${exesuffix})
+  if(NOT DEFINED CMAKE_C_COMPILER OR NOT IS_ABSOLUTE "${CMAKE_C_COMPILER}")
+    set(CMAKE_C_COMPILER "${prefix}gcc${exesuffix}")
+  endif()
+  if(NOT DEFINED CMAKE_ASM_COMPILER OR NOT IS_ABSOLUTE "${CMAKE_ASM_COMPILER}")
+    set(CMAKE_ASM_COMPILER "${prefix}gcc${exesuffix}")
+  endif()
+  if(NOT DEFINED CMAKE_CXX_COMPILER OR NOT IS_ABSOLUTE "${CMAKE_CXX_COMPILER}")
+    set(CMAKE_CXX_COMPILER "${prefix}g++${exesuffix}")
+  endif()
 
   set(CMAKE_CROSSCOMPILING true)
 
@@ -33,8 +39,16 @@ macro(disable_compiler_detection)
 
   enable_language(C CXX ASM)
 
-  set(CMAKE_AR ${prefix}ar${exesuffix}) # needs to be after enable_language
-  set(CMAKE_RANLIB ${prefix}ranlib${exesuffix})
+  if(IS_ABSOLUTE "${CMAKE_C_COMPILER}")
+    get_filename_component(_toolchain_bin_dir "${CMAKE_C_COMPILER}" DIRECTORY)
+    set(CMAKE_AR "${_toolchain_bin_dir}/${prefix}ar${exesuffix}") # needs to be after enable_language
+    set(CMAKE_RANLIB "${_toolchain_bin_dir}/${prefix}ranlib${exesuffix}")
+    set(CMAKE_OBJCOPY "${_toolchain_bin_dir}/${prefix}objcopy${exesuffix}")
+  else()
+    set(CMAKE_AR "${prefix}ar${exesuffix}") # needs to be after enable_language
+    set(CMAKE_RANLIB "${prefix}ranlib${exesuffix}")
+    set(CMAKE_OBJCOPY "${prefix}objcopy${exesuffix}")
+  endif()
 endmacro()
 
 option(DEBUG "Enable debug informations" OFF)
@@ -151,7 +165,7 @@ macro(update_flags)
   set(CMAKE_CXX_FLAGS        "${compiler_flags} ${tmp} ${errors_flags_cpp} -std=c++11")
   set(CMAKE_C_FLAGS          "${compiler_flags} ${tmp} ${errors_flags_c} -std=c99")
   set(CMAKE_ASM_FLAGS        "${tmp}")
-  set(CMAKE_CXX_LINK_EXECUTABLE "${prefix}g++ ${CMAKE_EXE_LINKER_FLAGS} <OBJECTS> -o <TARGET> ${ADDITIONAL_LINK_DIRS} ${ADDITIONAL_LIBS} ${port_lflags} ${common_lflags}")
+  set(CMAKE_CXX_LINK_EXECUTABLE "<CMAKE_CXX_COMPILER> ${CMAKE_EXE_LINKER_FLAGS} <OBJECTS> -o <TARGET> ${ADDITIONAL_LINK_DIRS} ${ADDITIONAL_LIBS} ${port_lflags} ${common_lflags}")
 endmacro()
 
 update_flags()

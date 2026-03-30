@@ -17,6 +17,8 @@ function Refresh-ProcessPath {
 function Test-CommandExists {
     param([Parameter(Mandatory = $true)][string]$Name)
 
+    $wingetLinksDir = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links' } else { '' }
+
     if ($null -ne (Get-Command $Name -ErrorAction SilentlyContinue)) {
         return $true
     }
@@ -30,11 +32,18 @@ function Test-CommandExists {
     catch {
     }
 
+    $wingetCmake = if ($wingetLinksDir) { Join-Path $wingetLinksDir 'cmake.exe' } else { '' }
+    $wingetNinja = if ($wingetLinksDir) { Join-Path $wingetLinksDir 'ninja.exe' } else { '' }
+    $wingetArmGpp = if ($wingetLinksDir) { Join-Path $wingetLinksDir 'arm-none-eabi-g++.exe' } else { '' }
+
     $commonPaths = @(
+        $wingetCmake,
         'C:\Program Files\CMake\bin\cmake.exe',
         'C:\ProgramData\chocolatey\bin\cmake.exe',
+        $wingetNinja,
         'C:\ProgramData\chocolatey\bin\ninja.exe',
         'C:\Program Files\ninja\ninja.exe',
+        $wingetArmGpp,
         'C:\Program Files (x86)\GNU Arm Embedded Toolchain\*\bin\arm-none-eabi-g++.exe',
         'C:\Program Files\GNU Arm Embedded Toolchain\*\bin\arm-none-eabi-g++.exe',
         'C:\Program Files (x86)\Arm GNU Toolchain arm-none-eabi\*\bin\arm-none-eabi-g++.exe',
@@ -43,13 +52,13 @@ function Test-CommandExists {
 
     switch ($Name) {
         'cmake' {
-            return (Test-Path $commonPaths[0]) -or (Test-Path $commonPaths[1])
+            return (Test-Path $commonPaths[0]) -or (Test-Path $commonPaths[1]) -or (Test-Path $commonPaths[2])
         }
         'ninja' {
-            return (Test-Path $commonPaths[2]) -or (Test-Path $commonPaths[3])
+            return (Test-Path $commonPaths[3]) -or (Test-Path $commonPaths[4]) -or (Test-Path $commonPaths[5])
         }
         'arm-none-eabi-g++' {
-            foreach ($p in $commonPaths[4..7]) {
+            foreach ($p in $commonPaths[6..10]) {
                 if (Get-ChildItem -Path $p -ErrorAction SilentlyContinue | Select-Object -First 1) {
                     return $true
                 }
@@ -72,23 +81,8 @@ function Test-WingetPackageInstalled {
 
     Write-Host "  (Checking with winget...)" -ForegroundColor Gray
     try {
-        $job = Start-Job -ScriptBlock {
-            param($packageId)
-            $output = & winget list --id $packageId --exact --source winget --disable-interactivity 2>&1 | Out-String
-            return $output -match [Regex]::Escape($packageId)
-        } -ArgumentList $Id
-        
-        # Wait max 30 seconds for winget check
-        if (Wait-Job -Job $job -Timeout 30) {
-            $result = Receive-Job -Job $job
-            Remove-Job -Job $job
-            return $result
-        }
-        else {
-            Write-Host "  (winget check timed out, skipping)" -ForegroundColor Yellow
-            Remove-Job -Job $job -Force
-            return $false
-        }
+        $output = & winget list --id $Id --exact --source winget --disable-interactivity 2>&1 | Out-String
+        return $output -match [Regex]::Escape($Id)
     }
     catch {
         return $false
@@ -109,31 +103,54 @@ function Try-InstallWithWinget {
     }
 
     Write-Host "  Installing $DisplayName with winget (this may take a minute on first run)..." -ForegroundColor Cyan
-    Write-Host "  (Press Ctrl+C to skip this package if it takes too long)" -ForegroundColor Gray
+    Write-Host "  (winget output follows)" -ForegroundColor Gray
     try {
-        $job = Start-Job -ScriptBlock {
-            param($packageId, $acceptAgree)
-            $output = & winget install --id $packageId --exact --source winget --disable-interactivity $acceptAgree --accept-source-agreements 2>&1
-            return $output, $LASTEXITCODE
-        } -ArgumentList $Id, "--accept-package-agreements"
-        
-        # Wait max 120 seconds for winget install (it can take a while on first run)
-        if (Wait-Job -Job $job -Timeout 120) {
-            $result, $exitCode = Receive-Job -Job $job
-            Remove-Job -Job $job
-            
-            if ($exitCode -eq 0 -or $result -match 'Successfully installed') {
-                Write-Host "  [OK] $DisplayName installed successfully" -ForegroundColor Green
+        $outputLines = @()
+        $spinnerFrames = @('|', '/', '-', '\\')
+        $spinnerIndex = 0
+        $spinnerActive = $false
+        & winget install --id $Id --exact --source winget --disable-interactivity --accept-package-agreements --accept-source-agreements 2>&1 |
+            ForEach-Object {
+                $line = "$($_)"
+                $outputLines += $line
+                $trimmed = $line.Trim()
+
+                # Winget prints spinner/progress redraw frames as standalone characters.
+                # Keep those updates on one line to avoid flooding the terminal output.
+                if ($trimmed -match '^[\|/\\-]+$') {
+                    $frame = $spinnerFrames[$spinnerIndex % $spinnerFrames.Count]
+                    Write-Host "`r    [winget] $frame Installing $DisplayName..." -NoNewline -ForegroundColor DarkGray
+                    $spinnerIndex++
+                    $spinnerActive = $true
+                }
+                elseif ($trimmed -match '([0-9]+(?:\.[0-9]+)?\s*(?:KB|MB|GB)\s*/\s*[0-9]+(?:\.[0-9]+)?\s*(?:KB|MB|GB)|[0-9]{1,3}%)') {
+                    $frame = $spinnerFrames[$spinnerIndex % $spinnerFrames.Count]
+                    $progressText = $Matches[1]
+                    Write-Host "`r    [winget] $frame Installing $DisplayName... $progressText" -NoNewline -ForegroundColor DarkGray
+                    $spinnerIndex++
+                    $spinnerActive = $true
+                }
+                else {
+                    if ($spinnerActive) {
+                        Write-Host ""
+                        $spinnerActive = $false
+                    }
+
+                    if ($trimmed) {
+                        Write-Host "    [winget] $trimmed" -ForegroundColor DarkGray
+                    }
+                }
             }
-            else {
-                Write-Host "  [WARN] winget install failed for $DisplayName (id: $Id)" -ForegroundColor Yellow
-                Write-Host "    Run output: $result" -ForegroundColor Gray
-            }
+
+        if ($spinnerActive) {
+            Write-Host ""
+        }
+
+        if ($LASTEXITCODE -eq 0 -or ($outputLines -join "`n") -match 'Successfully installed') {
+            Write-Host "  [OK] $DisplayName installed successfully" -ForegroundColor Green
         }
         else {
-            Write-Host "  [WARN] winget install timed out for $DisplayName (id: $Id)" -ForegroundColor Yellow
-            Write-Host "    You can try manual installation or use Chocolatey" -ForegroundColor Gray
-            Remove-Job -Job $job -Force
+            Write-Host "  [WARN] winget install failed for $DisplayName (id: $Id)" -ForegroundColor Yellow
         }
     }
     catch {

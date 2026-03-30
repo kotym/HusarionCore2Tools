@@ -24,11 +24,11 @@ include_directories("${PORT_DIR}/src/hUSB/")
 macro(add_hexecutable_port name)
   add_custom_target("${name}.bin" ALL
     DEPENDS "${name}.elf"
-    COMMAND ${prefix}objcopy -O binary "${OUTDIR}${name}.elf" "${OUTDIR}${name}.bin")
+    COMMAND "${CMAKE_OBJCOPY}" -O binary "${OUTDIR}${name}.elf" "${OUTDIR}${name}.bin")
 
   add_custom_target("${name}.hex" ALL
     DEPENDS "${name}.elf"
-    COMMAND ${prefix}objcopy -O ihex "${OUTDIR}${name}.elf" "${OUTDIR}${name}.hex")
+    COMMAND "${CMAKE_OBJCOPY}" -O ihex "${OUTDIR}${name}.elf" "${OUTDIR}${name}.hex")
 
   add_custom_target("flash_${name}"
     DEPENDS "${OUTDIR}${name}.hex"

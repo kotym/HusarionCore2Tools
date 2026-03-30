@@ -99,6 +99,7 @@ try {
 
     $entriesToCopy = @(
         'README.md',
+        'THIRD_PARTY_NOTICES.md',
         'tools',
         'hFramework',
         'hSensors',
