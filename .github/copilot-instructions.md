@@ -23,10 +23,12 @@
   - `tools/install/install-inhouse.ps1`
 - Build framework/modules only:
   - `tools/install/bootstrap-hframework.ps1`
+- Build distributable package:
+  - `tools/install/build-distribution-package.ps1`
+- Install package (extension + toolchain):
+  - `tools/install/install-package.ps1`
 - Package extension as VSIX:
   - `tools/vscode-husarion-core2/build-vsix.ps1`
-- Install extension locally:
-  - `tools/install/install-core2-extension.ps1`
 
 ## Path Resolution Rules
 - Install scripts in `tools/install` must assume repository root at `..\..` from script location.

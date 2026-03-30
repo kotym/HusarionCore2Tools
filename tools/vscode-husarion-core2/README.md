@@ -1,82 +1,57 @@
-# Husarion CORE2 Tools (Local VS Code Extension)
+# Husarion CORE2 Development Tools (VS Code Extension)
 
-This extension package in this repository is community-maintained and not an official Husarion release.
+This VS Code extension provides a streamlined development workflow for Husarion CORE2 embedded development (STM32F4 CPU).
 
-This extension provides CORE2 workflow commands that replace the core workflow of the broken Husarion extension:
+**Note:** This extension is community-maintained and not an official Husarion release.
 
-1. `Husarion: Create CORE2 Project`
-2. `Husarion: Build Project (No Flash)`
-3. `Husarion: Build + Flash Project to CORE2`
-4. `Husarion: Flash Latest HEX (No Build)`
-5. `Husarion: Open CORE2 Serial Console`
-6. `Husarion: Install Required Toolchain and Components`
+## Features
 
-## Commands
+### Available Commands
 
-### Create CORE2 Project
-- Copies template files from `project_template` (by default from your hFramework path).
-- Creates a new folder `<selected-parent>/<project-name>`.
-- Patches `CMakeLists.txt` to:
-  - set `HFRAMEWORK_PATH` to configured path,
-  - rename executable target from `myproject` to your project name.
+1. **Create CORE2 Project** - Sets up a new embedded project with proper CMakeLists.txt configuration
+2. **Build Project (No Flash)** - Compiles your project using CMake and Ninja
+3. **Build + Flash Project to CORE2** - Builds and automatically flashes the HEX file to your board
+4. **Flash Latest HEX (No Build)** - Programs the most recent HEX file without rebuilding
+5. **Open CORE2 Serial Console** - Opens a serial terminal for debugging and monitor output
+6. **Install Required Toolchain and Components** - Checks and installs essential development tools (CMake, Ninja, ARM compiler)
 
-### Build Project (No Flash)
-- Builds enabled modules (`hSensors`, `hModules`) first when found.
-- Runs configure + build in project root and waits for completion:
-  - `cmake -S <project> -B <project>/build -GNinja -DBOARD_TYPE=core2 -DCMAKE_POLICY_VERSION_MINIMUM=3.5`
-  - `ninja -C <project>/build <target>.hex`
+## How It Works
 
-### Build + Flash Project to CORE2
-- Runs the build flow above.
-- Calls `core2-flasher.exe <file.hex>`.
+- **Project Creation:** Copies a template CMakeLists.txt and configures paths automatically
+- **Build System:** Uses CMake + Ninja for fast, incremental builds
+- **Flashing:** Integrates with the STM32F4 flasher utility for seamless programming
+- **Toolchain Management:** Auto-detects or installs required compilers and build tools
 
-### Flash Latest HEX (No Build)
-- Finds newest `.hex` file in `build`.
-- Calls `core2-flasher.exe <file.hex>`.
+## Configuration
 
-### Open CORE2 Serial Console
-- Calls `core2-flasher.exe --console`.
+The extension reads these VS Code settings:
 
-### Install Required Toolchain and Components
-- Runs bundled installer helper script from extension package.
-- Checks for `cmake`, `ninja`, and `arm-none-eabi-g++`.
-- If missing, it first tries offline installer script (if provided), then `winget`, then `choco`.
-- Optionally installs VS Code C/C++ extension (`ms-vscode.cpptools`).
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `husarionCore2.hframeworkPath` | auto | Path to hFramework source |
+| `husarionCore2.templatePath` | auto | Project template location |
+| `husarionCore2.flasherPath` | auto | Flasher utility location |
+| `husarionCore2.boardType` | `core2` | Target board type |
+| `husarionCore2.hSensorsPath` | auto | Path to hSensors module |
+| `husarionCore2.hModulesPath` | auto | Path to hModules module |
+| `husarionCore2.openProjectInNewWindow` | `false` | Open new projects in separate window |
 
-## Settings
+## Quick Start
 
-- `husarionCore2.hframeworkPath` (default: empty, auto-detect)
-- `husarionCore2.templatePath` (optional override)
-- `husarionCore2.flasherPath` (optional override)
-- `husarionCore2.boardType` (default: `core2`)
-- `husarionCore2.hSensorsPath` (optional override)
-- `husarionCore2.hModulesPath` (optional override)
-- `husarionCore2.openProjectInNewWindow` (default: `false`)
+Extract the installation package and run:
 
-## Quick local test in VS Code
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install-package.ps1
+```
 
-1. Open this folder as extension source.
-2. Press `F5` to run Extension Development Host.
-3. In the new VS Code window, run commands from Command Palette.
+Then restart VS Code and start using the Husarion commands!
 
 ## Notes
 
-- This extension is intentionally minimal and local-first.
-- It assumes PowerShell on Windows for the flasher command invocation.
+- This extension runs exclusively on Windows with PowerShell 5.1+
+- Requires: CMake, Ninja, and GNU ARM Embedded Toolchain (auto-installed if missing)
+- Works with hFramework, hSensors, and hModules modules
 
-## Install as normal extension (folder format)
-
-This repository includes a helper script that creates a copy-ready extension folder named:
-
-- `local.husarion-core2-tools-<version>`
-
-Run:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\pack-local-extension.ps1
-```
-
-Then copy the generated folder from `dist` into:
 
 - `%USERPROFILE%\.vscode\extensions`
 

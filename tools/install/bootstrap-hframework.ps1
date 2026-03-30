@@ -1,11 +1,11 @@
-$ErrorActionPreference = 'Stop'
-Set-StrictMode -Version Latest
-
 param(
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\hFramework')).Path,
     [string]$BoardType = 'core2',
     [switch]$SkipModules
 )
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 
 function Test-CommandExists {
     param([Parameter(Mandatory = $true)][string]$Name)
@@ -126,5 +126,5 @@ Write-Host ''
 Write-Host 'Bootstrap complete.' -ForegroundColor Green
 Write-Host "hFramework build: $frameworkBuildDir"
 Write-Host 'Next:'
-Write-Host '  1. Install extension with tools/install/install-core2-extension.ps1'
+Write-Host '  1. Install package with tools/install/install-package.ps1 -SkipToolchainInstall'
 Write-Host '  2. Open project and run Husarion: Build Project (No Flash)'

@@ -24,7 +24,7 @@ if (Test-Path $outPath) {
 
 Push-Location $scriptDir
 try {
-    & npx --yes @vscode/vsce package --out $outPath
+    & npx --yes @vscode/vsce package --out $outPath --allow-missing-repository
     if ($LASTEXITCODE -ne 0) {
         throw 'VSIX packaging failed.'
     }

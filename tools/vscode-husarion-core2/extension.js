@@ -553,7 +553,7 @@ async function openConsoleCommand() {
 }
 
 async function installDependenciesCommand() {
-  const scriptPath = path.join(__dirname, "scripts", "install-deps.ps1");
+  const scriptPath = path.join(__dirname, "scripts", "install-or-refresh-toolchain.ps1");
   if (!(await pathExists(scriptPath))) {
     vscode.window.showErrorMessage(`Dependency installer not found: ${scriptPath}`);
     return;

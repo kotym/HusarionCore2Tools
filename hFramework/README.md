@@ -54,5 +54,5 @@ This section describes how to build hFramework yourself,
   3. Install/update VS Code extension only:
 
     ```powershell
-    powershell -ExecutionPolicy Bypass -File ..\tools\install\install-core2-extension.ps1
+    powershell -ExecutionPolicy Bypass -File ..\tools\install\install-package.ps1 -SkipToolchainInstall
     ```

@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $packageJsonPath = Join-Path $scriptDir 'package.json'
@@ -29,6 +30,18 @@ foreach ($item in $filesToCopy) {
     $src = Join-Path $scriptDir $item
     if (Test-Path $src) {
         Copy-Item $src -Destination (Join-Path $outDir $item) -Force
+    }
+}
+
+$foldersToCopy = @(
+    'scripts'
+)
+
+foreach ($folder in $foldersToCopy) {
+    $src = Join-Path $scriptDir $folder
+    $dst = Join-Path $outDir $folder
+    if (Test-Path $src) {
+        Copy-Item $src -Destination $dst -Recurse -Force
     }
 }
 
