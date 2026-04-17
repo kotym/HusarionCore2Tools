@@ -13,7 +13,6 @@ This is not an official Husarion repository.
 **Important:** If you move or rename the installation folder after initial setup, you must re-run `install.bat` (or the install command below) to repair all internal paths and ensure the extension works correctly.
 
 Alternative installer command (from extracted folder):
-
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1
 ```

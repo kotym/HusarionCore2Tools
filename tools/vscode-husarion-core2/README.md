@@ -4,16 +4,19 @@ VS Code extension for Husarion CORE2 project creation, build, flash, and serial 
 
 This extension is community-maintained and not an official Husarion release.
 
-## Quick Start
+## Quick Start (Install and Use)
 
-1. Install from the HusarionCore2Tools package:
+1. Extract `HusarionCore2Tools-vX.Y.Z.zip`.
+2. Run `install.bat` in the extracted folder.
+3. Restart VS Code.
+4. Open Command Palette and run commands starting with `Husarion:`.
 
+**Important:** If you move or rename the installation folder after initial setup, you must re-run `install.bat` (or the install command below) to repair all internal paths and ensure the extension works correctly.
+
+Alternative installer command (from extracted folder):
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1
 ```
-
-2. Restart VS Code.
-3. Open Command Palette and run commands starting with `Husarion:`.
 
 ### Flashing driver setup
 For flashing CORE2 install Zadig and replace FT231X drivers using this guide:
