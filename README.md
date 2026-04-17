@@ -15,6 +15,14 @@ Local tooling:
 - `tools/install`: distribution builder and package installer.
 - `tools/vscode-husarion-core2`: VS Code extension used by end users.
 
+## API Documentation
+
+Comprehensive class and workflow guides for the bundled components:
+
+- `hFramework/docs/comprehensive-api-guide.md`
+- `hModules/docs/comprehensive-api-guide.md`
+- `hSensors/docs/comprehensive-api-guide.md`
+
 ## Prerequisites (Development Machine)
 
 - Windows PowerShell 5.1+

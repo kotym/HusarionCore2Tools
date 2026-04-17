@@ -1,0 +1,43 @@
+function initCustomJs() {
+  initSmoothScroll();
+  initMobile();
+
+  window.addEventListener('resize', function () {
+    setTimeout(initMobile, 100);
+  });
+}
+
+(function (initFn) {
+  window.addEventListener('load', initFn);
+})(initCustomJs);
+
+function initMobile() {
+  const selector = document.querySelector('.navbar-toggler');
+  if (!selector) {
+    return;
+  }
+  let mobile = getComputedStyle(selector).display === 'block';
+  document.body.classList.toggle('desktop', !mobile);
+  document.body.classList.toggle('mobile', mobile);
+  if (!mobile) {
+    const navbarNav = document.querySelector('.navbar-nav');
+    if (navbarNav) {
+      navbarNav.classList.remove('hidden');
+    }
+  }
+}
+
+function initSmoothScroll() {
+  const links = document.querySelectorAll('a.local');
+  links.forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+      if (this.hash !== "") {
+        e.preventDefault();
+        document.querySelector(this.hash).scrollIntoView({
+          behavior: 'smooth'
+        });
+        history.replaceState(null, null, this.hash);
+      }
+    });
+  });
+}
