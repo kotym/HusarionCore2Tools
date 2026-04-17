@@ -10,7 +10,7 @@ endif()
 disable_compiler_detection()
 
 set(port_flags "-fno-builtin-printf -fno-omit-frame-pointer -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mthumb -mfloat-abi=hard")
-set(port_lflags "-T${HFRAMEWORK_DIR_Q}/stm32f4_linker.ld")
+set(port_lflags "-T\"${HFRAMEWORK_DIR}/stm32f4_linker.ld\"")
 
 add_definitions(-DUSE_USB_OTG_FS -DUSE_STDPERIPH_DRIVER -DSTM32F4XX -DSTM32F4 -DSTM32F407ZG -D__FPU_USED -DARM_MATH_CM4 -D__FPU_PRESENT)
 
