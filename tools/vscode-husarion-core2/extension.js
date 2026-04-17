@@ -392,6 +392,236 @@ function isMissingLibraryLinkError(err) {
   return /cannot find -lhFramework|cannot find -lhSensors|cannot find -lhModules/i.test(msg);
 }
 
+function boardTypeToDefineValue(boardType) {
+  switch (String(boardType || "").toLowerCase()) {
+    case "robocore":
+      return "2";
+    case "core2":
+      return "3";
+    case "core2mini":
+      return "4";
+    default:
+      return "";
+  }
+}
+
+function getFallbackCppDefines(boardType) {
+  const defines = ["PORT=stm32", "SUPPORT_CPLUSPLUS"];
+  const boardDefine = boardTypeToDefineValue(boardType);
+  if (boardDefine) {
+    defines.unshift(`BOARD_TYPE=${boardDefine}`);
+  }
+  return defines;
+}
+
+function normalizeCppStandard(standardValue, fallbackValue) {
+  if (!standardValue) {
+    return fallbackValue;
+  }
+
+  const value = String(standardValue).trim().toLowerCase();
+  const exact = {
+    "c++98": "c++98",
+    "gnu++98": "gnu++98",
+    "c++03": "c++03",
+    "gnu++03": "gnu++03",
+    "c++11": "c++11",
+    "gnu++11": "gnu++11",
+    "c++14": "c++14",
+    "gnu++14": "gnu++14",
+    "c++17": "c++17",
+    "gnu++17": "gnu++17",
+    "c++20": "c++20",
+    "gnu++20": "gnu++20",
+    "c++23": "c++23",
+    "gnu++23": "gnu++23",
+    "c++2b": "c++23",
+    "gnu++2b": "gnu++23"
+  };
+
+  if (exact[value]) {
+    return exact[value];
+  }
+
+  const match = value.match(/(gnu\+\+|c\+\+)(98|03|11|14|17|20|23|2b)/);
+  if (!match) {
+    return fallbackValue;
+  }
+
+  const flavor = match[1];
+  const version = match[2] === "2b" ? "23" : match[2];
+  return `${flavor}${version}`;
+}
+
+function getCppStandardFromCmake(cmakeText) {
+  const m = String(cmakeText || "").match(/set\s*\(\s*CMAKE_CXX_STANDARD\s+([0-9]+)\s*\)/i);
+  if (!m || !m[1]) {
+    return "";
+  }
+  return normalizeCppStandard(`c++${m[1]}`, "");
+}
+
+function parseCompileEntry(entry) {
+  const defines = new Set();
+  let standard = "";
+
+  if (Array.isArray(entry && entry.arguments)) {
+    for (let i = 0; i < entry.arguments.length; i += 1) {
+      const token = String(entry.arguments[i] || "");
+      if (token === "-D") {
+        const next = String(entry.arguments[i + 1] || "").trim();
+        if (next) {
+          defines.add(next);
+        }
+        i += 1;
+      } else if (token.startsWith("-D")) {
+        const value = token.slice(2).trim();
+        if (value) {
+          defines.add(value);
+        }
+      } else if (token.startsWith("-std=")) {
+        standard = token.slice(5).trim();
+      }
+    }
+  }
+
+  if (typeof (entry && entry.command) === "string") {
+    const cmd = entry.command;
+    const defineRe = /(?:^|\s)-D([^\s"']+|"[^"]+")/g;
+    let dm;
+    while ((dm = defineRe.exec(cmd)) !== null) {
+      const raw = String(dm[1] || "").trim();
+      const cleaned = raw.replace(/^"|"$/g, "");
+      if (cleaned) {
+        defines.add(cleaned);
+      }
+    }
+
+    const stdRe = /(?:^|\s)-std=([^\s]+)/g;
+    let sm;
+    while ((sm = stdRe.exec(cmd)) !== null) {
+      standard = String(sm[1] || "").trim();
+    }
+  }
+
+  return {
+    defines: [...defines],
+    standard
+  };
+}
+
+async function getCppToolsMetadata(projectRoot, cmakeText, boardType) {
+  const compileCommandsPath = path.join(projectRoot, "build", "compile_commands.json");
+  const fallbackDefines = getFallbackCppDefines(boardType);
+  const fallbackStandard = getCppStandardFromCmake(cmakeText) || "c++11";
+
+  const defineSet = new Set(fallbackDefines);
+  let cppStandard = fallbackStandard;
+
+  if (await pathExists(compileCommandsPath)) {
+    try {
+      const raw = await fsp.readFile(compileCommandsPath, "utf8");
+      const entries = JSON.parse(raw);
+      if (Array.isArray(entries)) {
+        for (const entry of entries) {
+          const parsed = parseCompileEntry(entry);
+          for (const d of parsed.defines) {
+            defineSet.add(d);
+          }
+          cppStandard = normalizeCppStandard(parsed.standard, cppStandard);
+        }
+      }
+    } catch (err) {
+      outputChannel.appendLine(`Warning: cannot parse compile_commands.json for IntelliSense metadata: ${err}`);
+    }
+  }
+
+  return {
+    defines: [...defineSet],
+    cppStandard
+  };
+}
+
+function mergeUniquePaths(paths) {
+  const out = [];
+  const seen = new Set();
+
+  for (const p of paths) {
+    if (!p) {
+      continue;
+    }
+
+    const normalized = normalizeForCMake(String(p).trim());
+    if (!normalized) {
+      continue;
+    }
+
+    const key = process.platform === "win32" ? normalized.toLowerCase() : normalized;
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    out.push(normalized);
+  }
+
+  return out;
+}
+
+async function getIncludePathsFromCompileCommands(projectRoot) {
+  const compileCommandsPath = path.join(projectRoot, "build", "compile_commands.json");
+  if (!(await pathExists(compileCommandsPath))) {
+    return [];
+  }
+
+  const includePaths = [];
+
+  try {
+    const raw = await fsp.readFile(compileCommandsPath, "utf8");
+    const entries = JSON.parse(raw);
+    if (!Array.isArray(entries)) {
+      return [];
+    }
+
+    for (const entry of entries) {
+      if (Array.isArray(entry && entry.arguments)) {
+        for (let i = 0; i < entry.arguments.length; i += 1) {
+          const token = String(entry.arguments[i] || "").trim();
+          if (token === "-I") {
+            const next = String(entry.arguments[i + 1] || "").trim();
+            if (next) {
+              includePaths.push(next.replace(/^\"|\"$/g, ""));
+            }
+            i += 1;
+          } else if (token.startsWith("-I")) {
+            const value = token.slice(2).trim();
+            if (value) {
+              includePaths.push(value.replace(/^\"|\"$/g, ""));
+            }
+          }
+        }
+      }
+
+      if (typeof (entry && entry.command) === "string") {
+        const includeRe = /(?:^|\s)-I([^\s"']+|"[^"]+")/g;
+        let m;
+        while ((m = includeRe.exec(entry.command)) !== null) {
+          const rawPath = String(m[1] || "").trim();
+          const cleaned = rawPath.replace(/^\"|\"$/g, "");
+          if (cleaned) {
+            includePaths.push(cleaned);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    outputChannel.appendLine(`Warning: cannot parse compile_commands include paths: ${err}`);
+    return [];
+  }
+
+  return mergeUniquePaths(includePaths);
+}
+
 function getHexTargetNameFromCMake(cmakeText, fallbackName) {
   const m = cmakeText.match(/add_hexecutable\s*\(\s*([A-Za-z0-9_.-]+)/i);
   if (m && m[1]) {
@@ -500,7 +730,7 @@ async function ensureFrameworkBuilt(cfg) {
   outputChannel.appendLine(`hFramework is up to date at ${expectedLib}`);
 }
 
-function buildCppToolsConfiguration(name, includePath, compilerPath, intelliSenseMode) {
+function buildCppToolsConfiguration(name, includePath, compilerPath, intelliSenseMode, defines, cppStandard) {
   return {
     name,
     includePath,
@@ -508,27 +738,35 @@ function buildCppToolsConfiguration(name, includePath, compilerPath, intelliSens
       path: includePath,
       limitSymbolsToIncludedHeaders: false
     },
-    defines: [],
+    defines,
     compilerPath,
     cStandard: "c11",
-    cppStandard: "c++11",
+    cppStandard,
     intelliSenseMode,
     compileCommands: "${workspaceFolder}/build/compile_commands.json"
   };
 }
 
-async function ensureCppToolsConfig(projectRoot, cfg, moduleIncludePaths, compilerPath) {
+async function ensureCppToolsConfig(projectRoot, cfg, moduleIncludePaths, compilerPath, cmakeText) {
   const vscodeDir = path.join(projectRoot, ".vscode");
   await ensureDir(vscodeDir);
 
+  const metadata = await getCppToolsMetadata(projectRoot, cmakeText, cfg.boardType);
+  const compileCommandIncludes = await getIncludePathsFromCompileCommands(projectRoot);
+
   const hf = cfg.hframeworkPath;
-  const includePath = [
+  const frameworkBuildDir = normalizeForCMake(path.join(hf, "build", `stm32_${cfg.boardType}_1.0.0`));
+  const includePath = mergeUniquePaths([
     "${workspaceFolder}",
+    "${workspaceFolder}/..",
     normalizeForCMake(path.join(hf, "include")),
     normalizeForCMake(path.join(hf, "src")),
+    normalizeForCMake(path.join(hf, "src", "hSystem")),
+    normalizeForCMake(path.join(hf, "src", "Other")),
     normalizeForCMake(path.join(hf, "ports", "stm32", "include")),
     normalizeForCMake(path.join(hf, "ports", "stm32", "src")),
     normalizeForCMake(path.join(hf, "ports", "stm32", "src", "hPeriph")),
+    normalizeForCMake(path.join(hf, "ports", "stm32", "src", "hUSB", "usb")),
     normalizeForCMake(path.join(hf, "ports", "stm32", "src", "hUSB")),
     normalizeForCMake(path.join(hf, "third-party", "FreeRTOS")),
     normalizeForCMake(path.join(hf, "third-party", "FreeRTOS", "include")),
@@ -536,21 +774,22 @@ async function ensureCppToolsConfig(projectRoot, cfg, moduleIncludePaths, compil
     normalizeForCMake(path.join(hf, "third-party", "cmsis")),
     normalizeForCMake(path.join(hf, "third-party", "cmsis_boot")),
     normalizeForCMake(path.join(hf, "third-party", "cmsis_lib")),
+    normalizeForCMake(path.join(hf, "third-party", "cmsis_lib", "include")),
     normalizeForCMake(path.join(hf, "third-party", "usblib")),
     normalizeForCMake(path.join(hf, "third-party", "FatFS")),
-    normalizeForCMake(path.join(hf, "third-party", "eeprom"))
-  ];
-
-  for (const p of moduleIncludePaths) {
-    includePath.push(normalizeForCMake(p));
-  }
+    normalizeForCMake(path.join(hf, "third-party", "FatFS", "FATFS_include")),
+    normalizeForCMake(path.join(hf, "third-party", "eeprom")),
+    frameworkBuildDir,
+    ...moduleIncludePaths,
+    ...compileCommandIncludes
+  ]);
 
   const config = {
     version: 4,
     configurations: [
-      buildCppToolsConfiguration("Win32", includePath, compilerPath || "arm-none-eabi-g++.exe", "windows-gcc-x64"),
-      buildCppToolsConfiguration("Linux", includePath, "/usr/bin/arm-none-eabi-g++", "linux-gcc-x64"),
-      buildCppToolsConfiguration("Mac", includePath, "/usr/local/bin/arm-none-eabi-g++", "macos-gcc-x64")
+      buildCppToolsConfiguration("Win32", includePath, compilerPath || "arm-none-eabi-g++.exe", "windows-gcc-x64", metadata.defines, metadata.cppStandard),
+      buildCppToolsConfiguration("Linux", includePath, "/usr/bin/arm-none-eabi-g++", "linux-gcc-x64", metadata.defines, metadata.cppStandard),
+      buildCppToolsConfiguration("Mac", includePath, "/usr/local/bin/arm-none-eabi-g++", "macos-gcc-x64", metadata.defines, metadata.cppStandard)
     ]
   };
 
@@ -593,6 +832,14 @@ async function configureAndBuildProject(projectRoot, cfg) {
     hModules: await resolveModulePath("hModules", cfg)
   };
 
+  for (const modulePath of Object.values(resolvedModulePaths)) {
+    if (!modulePath) {
+      continue;
+    }
+    moduleIncludePaths.push(path.join(modulePath, "include"));
+    moduleIncludePaths.push(path.join(modulePath, "src"));
+  }
+
   await syncProjectCMakePaths(projectRoot, cfg, resolvedModulePaths);
   cmakeText = await readTextIfExists(cmakePath);
 
@@ -607,7 +854,6 @@ async function configureAndBuildProject(projectRoot, cfg) {
       continue;
     }
     await ensureModuleBuilt(moduleName, modulePath, cfg);
-    moduleIncludePaths.push(path.join(modulePath, "include"));
   }
 
   const cmakeArgs = [
@@ -638,7 +884,7 @@ async function configureAndBuildProject(projectRoot, cfg) {
 
   await runCommand(tools.cmake, cmakeArgs, projectRoot);
 
-  await ensureCppToolsConfig(projectRoot, cfg, moduleIncludePaths, tools.armGpp);
+  await ensureCppToolsConfig(projectRoot, cfg, moduleIncludePaths, tools.armGpp, cmakeText);
 
   const targetName = getHexTargetNameFromCMake(cmakeText, path.basename(projectRoot));
   try {
@@ -721,7 +967,15 @@ async function createProjectCommand() {
   await copyDirectory(templatePath, projectDir);
   await patchProjectCMake(projectDir, projectName, hframeworkPath);
   const tools = getResolvedToolPaths();
-  await ensureCppToolsConfig(projectDir, resolved, [], tools.armGpp);
+  const moduleIncludePaths = [];
+  for (const moduleName of ["hSensors", "hModules"]) {
+    const modulePath = await resolveModulePath(moduleName, resolved);
+    if (modulePath) {
+      moduleIncludePaths.push(path.join(modulePath, "include"));
+      moduleIncludePaths.push(path.join(modulePath, "src"));
+    }
+  }
+  await ensureCppToolsConfig(projectDir, resolved, moduleIncludePaths, tools.armGpp, "");
 
   const openNow = await vscode.window.showInformationMessage(
     `Created project at ${projectDir}`,
