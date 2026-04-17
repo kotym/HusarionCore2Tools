@@ -13,8 +13,6 @@ if ("${BOARD_TYPE}" STREQUAL robocore)
   set(HFRAMEWORK_DIR "${HFRAMEWORK_DIR}/robocore")
 endif()
 
-set(HFRAMEWORK_DIR_Q "\"${HFRAMEWORK_DIR}\"")
-
 include("${HFRAMEWORK_BASE_DIR}/hFrameworkPort.cmake")
 
 set(compiler_flags "-g")

@@ -56,6 +56,11 @@ function Get-ExtensionsRoot {
 }
 
 function Repair-VscodeExtensionsEnv {
+    $currentProcessValue = Normalize-VscodeExtensionsPath $env:VSCODE_EXTENSIONS
+    if ($currentProcessValue) {
+        $env:VSCODE_EXTENSIONS = $currentProcessValue
+    }
+
     $currentUserValue = [Environment]::GetEnvironmentVariable('VSCODE_EXTENSIONS', 'User')
     if (-not $currentUserValue) {
         return
@@ -68,9 +73,11 @@ function Repair-VscodeExtensionsEnv {
 
     if ($fixed -ne $currentUserValue) {
         [Environment]::SetEnvironmentVariable('VSCODE_EXTENSIONS', $fixed, 'User')
-        $env:VSCODE_EXTENSIONS = $fixed
         Write-Host "==> Repaired user VSCODE_EXTENSIONS path: $fixed"
     }
+
+    # Ensure current process uses the canonical user-level value as well.
+    $env:VSCODE_EXTENSIONS = $fixed
 }
 
 function Set-DefaultHusarionSettings {

@@ -2,7 +2,6 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$GitHubRepo,
     [string]$TargetVersion = '',
-    [string]$ExtensionId = 'local.husarion-core2-tools',
     [string]$AssetNamePattern = 'HusarionCore2Tools-*.zip',
     [string]$CurrentHframeworkPath = '',
     [switch]$DeleteOldInstall

@@ -11,6 +11,7 @@ let outputChannel;
 const DEFAULT_UPDATE_REPOSITORY = "kotym/HusarionCore2Tools";
 const UPDATE_LAST_CHECK_KEY = "husarionCore2.update.lastCheckMs";
 const UPDATE_SKIPPED_VERSION_KEY = "husarionCore2.update.skippedVersion";
+const UPDATE_CHECK_MIN_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
 function getFirstLine(text) {
   if (!text) return "";
@@ -115,24 +116,22 @@ async function getLatestGitHubRelease(repo) {
 }
 
 function quotePowerShellArg(value) {
-  return `"${String(value || "").replace(/"/g, '""')}"`;
+  return `'${String(value || "").replace(/'/g, "''")}'`;
 }
 
-async function startUpdateInstaller(context, repo, targetVersion, options = {}) {
+async function startUpdateInstaller(repo, targetVersion, options = {}) {
   const scriptPath = path.join(__dirname, "scripts", "update-from-github.ps1");
   if (!(await pathExists(scriptPath))) {
     throw new Error(`Update installer not found: ${scriptPath}`);
   }
 
   // Run updater from a temp copy so extension self-update does not touch the executing script file.
-  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "husarion-core2-updater-"));
-  const tempScriptPath = path.join(tempDir, "update-from-github.ps1");
+  const tempScriptPath = path.join(os.tmpdir(), "husarion-core2-update-from-github.ps1");
   await fsp.copyFile(scriptPath, tempScriptPath);
 
   const cfg = getConfig();
   const currentHframeworkPath = String(cfg.hframeworkPath || process.env.HFRAMEWORK_PATH || "").trim();
   const deleteOldInstall = Boolean(options.deleteOldInstall);
-  const extensionId = `${context.extension.packageJSON.publisher}.${context.extension.packageJSON.name}`;
   const terminal = vscode.window.createTerminal({
     name: "Husarion CORE2 Update"
   });
@@ -141,11 +140,12 @@ async function startUpdateInstaller(context, repo, targetVersion, options = {}) 
   outputChannel.appendLine(`Update script copied to temp path: ${tempScriptPath}`);
   terminal.sendText([
     "powershell",
+    "-NoProfile",
+    "-NonInteractive",
     "-ExecutionPolicy", "Bypass",
     "-File", quotePowerShellArg(tempScriptPath),
     "-GitHubRepo", quotePowerShellArg(repo),
     "-TargetVersion", quotePowerShellArg(targetVersion),
-    "-ExtensionId", quotePowerShellArg(extensionId),
     "-CurrentHframeworkPath", quotePowerShellArg(currentHframeworkPath),
     deleteOldInstall ? "-DeleteOldInstall" : ""
   ].join(" "));
@@ -160,9 +160,24 @@ async function checkForUpdates(context, options = {}) {
   }
 
   const now = Date.now();
+  const lastCheckMs = Number(context.globalState.get(UPDATE_LAST_CHECK_KEY, 0));
+  if (!manual && Number.isFinite(lastCheckMs) && lastCheckMs > 0 && (now - lastCheckMs) < UPDATE_CHECK_MIN_INTERVAL_MS) {
+    outputChannel.appendLine("Startup update check skipped (checked recently).");
+    return;
+  }
+
   await context.globalState.update(UPDATE_LAST_CHECK_KEY, now);
 
-  const configuredRepo = normalizeGithubRepository(cfg.get("updateRepository", DEFAULT_UPDATE_REPOSITORY));
+  const rawRepositorySetting = String(cfg.get("updateRepository", DEFAULT_UPDATE_REPOSITORY) || "").trim();
+  const configuredRepo = normalizeGithubRepository(rawRepositorySetting);
+  if (rawRepositorySetting && !configuredRepo) {
+    const message = "Setting husarionCore2.updateRepository has invalid format. Use owner/repo or a GitHub URL.";
+    if (manual) {
+      vscode.window.showWarningMessage(message);
+    } else {
+      outputChannel.appendLine(`${message} Falling back to default repository.`);
+    }
+  }
   const repo = configuredRepo || DEFAULT_UPDATE_REPOSITORY;
 
   let release;
@@ -216,7 +231,7 @@ async function checkForUpdates(context, options = {}) {
 
   if (choice === installAndDeleteLabel || choice === installAndKeepLabel) {
     await context.globalState.update(UPDATE_SKIPPED_VERSION_KEY, "");
-    await startUpdateInstaller(context, repo, latestVersion, {
+    await startUpdateInstaller(repo, latestVersion, {
       deleteOldInstall: choice === installAndDeleteLabel
     });
     vscode.window.showInformationMessage("Update installer started in terminal. Reload VS Code after installation completes.");
