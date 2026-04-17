@@ -4,6 +4,21 @@ VS Code extension for Husarion CORE2 project creation, build, flash, and serial 
 
 This extension is community-maintained and not an official Husarion release.
 
+## Quick Start
+
+1. Install from the HusarionCore2Tools package:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1
+```
+
+2. Restart VS Code.
+3. Open Command Palette and run commands starting with `Husarion:`.
+
+### Flashing driver setup
+For flashing CORE2 install Zadig and replace FT231X drivers using this guide:
+https://husarion.com/tutorials/deprecated/offline-development-tools/
+
 ## Requirements
 
 - Windows
@@ -12,31 +27,26 @@ This extension is community-maintained and not an official Husarion release.
 
 The extension can install missing build tools (CMake, Ninja, GNU Arm Embedded Toolchain) using package managers when available.
 
-## Installation
-
-Install from the HusarionCore2Tools package by running:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1
-```
-
-Then restart VS Code.
-
 ## Commands
 
-- `Husarion: Create CORE2 Project`
-- `Husarion: Build Project (No Flash)`
-- `Husarion: Rebuild Project (Clean All Build Dirs)`
-- `Husarion: Build + Flash Project to CORE2`
-- `Husarion: Flash Latest HEX (No Build)`
-- `Husarion: Open CORE2 Serial Console`
-- `Husarion: Install Required Toolchain and Components`
-- `Husarion: Check for Updates`
+| Command | Purpose |
+|---------|---------|
+| `Husarion: Create CORE2 Project` | Create a new project from template |
+| `Husarion: Build Project (No Flash)` | Build firmware without flashing |
+| `Husarion: Rebuild Project (Clean All Build Dirs)` | Full clean rebuild after path or cache issues |
+| `Husarion: Build + Flash Project to CORE2` | Build and flash in one step |
+| `Husarion: Flash Latest HEX (No Build)` | Flash previously generated HEX |
+| `Husarion: Open CORE2 Serial Console` | Open serial monitor |
+| `Husarion: Install Required Toolchain and Components` | Install/refresh dependencies |
+| `Husarion: Check for Updates` | Manually check GitHub release updates |
 
-Update prompt offers two install modes:
+## Updates
 
-- `Install update (delete old install)` removes the previous bundle folder pointed by `HFRAMEWORK_PATH`.
-- `Install update (keep old install)` keeps the previous bundle folder.
+- Startup checks can be disabled via `husarionCore2.checkUpdatesOnStartup`.
+- Prompt modes:
+	- `Install update (delete old install)` removes previous bundle folder from `HFRAMEWORK_PATH`.
+	- `Install update (keep old install)` leaves previous bundle folder.
+- Updates are installed from release ZIP by running package `install.bat` in an update terminal.
 
 ## Configuration
 
@@ -64,10 +74,9 @@ To disable startup update checks, set `husarionCore2.checkUpdatesOnStartup` to `
 
 ## Troubleshooting
 
+- **If you move or rename the installation folder, re-run `install.bat` to repair all paths.**
 - If commands are missing in the Command Palette, restart VS Code.
 - If build tools are missing, run `Husarion: Install Required Toolchain and Components`.
 - If toolchain was just installed, restart VS Code so PATH updates are picked up.
-- Updates are installed from a GitHub release ZIP and run through package `install.bat` in an update terminal.
 - Updates install into the same parent directory as the current `HFRAMEWORK_PATH` installation.
 - Extension cleanup in `%USERPROFILE%\.vscode\extensions` is handled by `install.bat` / `tools/install/install-package.ps1`.
-- If build fails after moving installation folders (for example path rename), use `Husarion: Rebuild Project (Clean All Build Dirs)`.

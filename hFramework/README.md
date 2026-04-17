@@ -2,6 +2,9 @@
 
 Note: in this bundle repository, hFramework is redistributed as part of a non-official, community-maintained package layout.
 
+If you are using the VS Code extension bundle as an end user, start from the top-level `README.md` in repository root.
+This file focuses on hFramework itself.
+
 hFramework is a library for creating software for mechatronic devices (e.g. robots). It has the following ports:
 
 - STM32 port for hardware created by Husarion - [CORE2 boards](https://husarion.com)
@@ -14,45 +17,48 @@ hFramework documentation is available at http://docs.husarion.com. The easiest w
 
 ## Building hFramework
 
-This section describes how to build hFramework yourself,
+This section describes how to build hFramework from source.
 
 1. First install the dependencies. For example, on Ubuntu:
 
-  ```
-  sudo apt-get install cmake ninja-build gcc-arm-none-eabi
-  ```
+   ```bash
+   sudo apt-get install cmake ninja-build gcc-arm-none-eabi
+   ```
 
-  On Windows, install `cmake`, `ninja`, and GNU Arm Embedded Toolchain so commands `cmake`, `ninja`, and `arm-none-eabi-g++` are available in `PATH`.
+   On Windows, install `cmake`, `ninja`, and GNU Arm Embedded Toolchain so commands `cmake`, `ninja`, and `arm-none-eabi-g++` are available in `PATH`.
 
-  A complete tutorial how to ude hFramework library can be found here: https://husarion.com/tutorials/other-tutorials/hframework-library-development/
+   A complete tutorial for hFramework library development:
+   https://husarion.com/tutorials/other-tutorials/hframework-library-development/
 
 2. Configure and build the project.
 
-    ```
-    mkdir build
-    cd build && cmake -DBOARD_TYPE=core2 -GNinja ..
-    ninja
-    ```
-    Substitute `core2` with `core2mini` if building for CORE2mini.
+   ```bash
+   mkdir build
+   cd build
+   cmake -DBOARD_TYPE=core2 -GNinja ..
+   ninja
+   ```
 
-  ## Helper Scripts
+   Substitute `core2` with `core2mini` if building for CORE2mini.
 
-  For rollout to multiple machines in this bundle repo, use helper scripts from top-level `tools/install`.
+## Bundle Helper Scripts
 
-  1. Install package (extension + toolchain):
+For rollout to multiple machines in this bundle repository, use helper scripts from repository root.
 
-    ```powershell
-    powershell -ExecutionPolicy Bypass -File ..\tools\install\install-package.ps1
-    ```
+1. Install package (extension + toolchain):
 
-  2. Install/update VS Code extension only (skip toolchain):
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1
+   ```
 
-    ```powershell
-    powershell -ExecutionPolicy Bypass -File ..\tools\install\install-package.ps1 -SkipToolchainInstall
-    ```
+2. Install/update VS Code extension only (skip toolchain):
 
-  3. Refresh/check toolchain only:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1 -SkipToolchainInstall
+   ```
 
-    ```powershell
-    powershell -ExecutionPolicy Bypass -File ..\tools\vscode-husarion-core2\scripts\install-or-refresh-toolchain.ps1
-    ```
+3. Refresh/check toolchain only:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\tools\vscode-husarion-core2\scripts\install-or-refresh-toolchain.ps1
+   ```
