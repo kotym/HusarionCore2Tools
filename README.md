@@ -55,6 +55,8 @@ powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1
 3. Restart VS Code.
 4. Use Command Palette commands starting with `Husarion:`.
 
+For flashing install zadig and replace drivers following this tutorial: https://husarion.com/tutorials/deprecated/offline-development-tools/
+
 ## Build VS Code Extension (Development)
 
 From `tools\vscode-husarion-core2`:
