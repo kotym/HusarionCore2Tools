@@ -4,6 +4,10 @@
     "description":  "Embedded development tools for Husarion CORE2 (STM32F4): project creation, CMake build/flash, IntelliSense configuration, and serial debugging.",
     "version":  "1.0.2",
     "publisher":  "local",
+    "repository":  {
+                       "type":  "git",
+                       "url":  "https://github.com/kotym/HusarionCore2Tools.git"
+                   },
     "license":  "MIT",
     "engines":  {
                     "vscode":  "^1.84.0"
@@ -13,6 +17,9 @@
                        "Programming Languages",
                        "Debuggers"
                    ],
+    "activationEvents":  [
+                             "onStartupFinished"
+                         ],
     "main":  "./extension.js",
     "contributes":  {
                         "commands":  [
@@ -23,6 +30,10 @@
                                          {
                                              "command":  "husarionCore2.buildProject",
                                              "title":  "Husarion: Build Project (No Flash)"
+                                         },
+                                         {
+                                             "command":  "husarionCore2.rebuildProject",
+                                             "title":  "Husarion: Rebuild Project (Clean All Build Dirs)"
                                          },
                                          {
                                              "command":  "husarionCore2.flashProject",
@@ -39,6 +50,10 @@
                                          {
                                              "command":  "husarionCore2.installDependencies",
                                              "title":  "Husarion: Install Required Toolchain and Components"
+                                         },
+                                         {
+                                             "command":  "husarionCore2.checkForUpdates",
+                                             "title":  "Husarion: Check for Updates"
                                          }
                                      ],
                         "configuration":  {
@@ -78,7 +93,17 @@
                                                                                                               "type":  "boolean",
                                                                                                               "default":  false,
                                                                                                               "description":  "If true, opening a newly created project uses a new VS Code window."
-                                                                                                          }
+                                                                                                          },
+                                                                 "husarionCore2.checkUpdatesOnStartup":  {
+                                                                                                             "type":  "boolean",
+                                                                                                             "default":  true,
+                                                                                                             "description":  "If true, checks GitHub releases on startup and offers guided update installation."
+                                                                                                         },
+                                                                 "husarionCore2.updateRepository":  {
+                                                                                                        "type":  "string",
+                                                                                                        "default":  "kotym/HusarionCore2Tools",
+                                                                                                        "description":  "GitHub repository in owner/name format used for release update checks."
+                                                                                                    }
                                                              }
                                           }
                     },

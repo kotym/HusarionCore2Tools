@@ -3,13 +3,226 @@ const cp = require("child_process");
 const fsp = require("fs/promises");
 const fs = require("fs");
 const path = require("path");
+const https = require("https");
 
 let outputChannel;
+
+const DEFAULT_UPDATE_REPOSITORY = "kotym/HusarionCore2Tools";
+const UPDATE_LAST_CHECK_KEY = "husarionCore2.update.lastCheckMs";
+const UPDATE_SKIPPED_VERSION_KEY = "husarionCore2.update.skippedVersion";
 
 function getFirstLine(text) {
   if (!text) return "";
   const line = text.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
   return line || "";
+}
+
+function normalizeGithubRepository(repoValue) {
+  const raw = String(repoValue || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  const withoutGitSuffix = raw.replace(/\.git$/i, "");
+  const directMatch = withoutGitSuffix.match(/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/);
+  if (directMatch) {
+    return directMatch[0];
+  }
+
+  const urlMatch = withoutGitSuffix.match(/github\.com[/:]([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)/i);
+  if (urlMatch && urlMatch[1]) {
+    return urlMatch[1];
+  }
+
+  return "";
+}
+
+function normalizeVersion(versionText) {
+  return String(versionText || "")
+    .trim()
+    .replace(/^v/i, "")
+    .split("+")[0]
+    .split("-")[0];
+}
+
+function compareVersions(leftVersion, rightVersion) {
+  const leftParts = normalizeVersion(leftVersion).split(".").map((p) => parseInt(p, 10));
+  const rightParts = normalizeVersion(rightVersion).split(".").map((p) => parseInt(p, 10));
+  const maxLen = Math.max(leftParts.length, rightParts.length, 3);
+
+  for (let i = 0; i < maxLen; i += 1) {
+    const left = Number.isFinite(leftParts[i]) ? leftParts[i] : 0;
+    const right = Number.isFinite(rightParts[i]) ? rightParts[i] : 0;
+    if (left > right) {
+      return 1;
+    }
+    if (left < right) {
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
+function getJsonFromUrl(url) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(
+      url,
+      {
+        headers: {
+          "User-Agent": "HusarionCore2Tools-UpdateChecker",
+          Accept: "application/vnd.github+json"
+        }
+      },
+      (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () => {
+          const status = response.statusCode || 0;
+          if (status < 200 || status >= 300) {
+            reject(new Error(`HTTP ${status}: ${body.slice(0, 200)}`));
+            return;
+          }
+
+          try {
+            resolve(JSON.parse(body));
+          } catch (err) {
+            reject(new Error(`Invalid JSON response from ${url}: ${err?.message || String(err)}`));
+          }
+        });
+      }
+    );
+
+    request.setTimeout(10000, () => {
+      request.destroy(new Error("Request timeout"));
+    });
+
+    request.on("error", (err) => reject(err));
+  });
+}
+
+async function getLatestGitHubRelease(repo) {
+  const apiUrl = `https://api.github.com/repos/${repo}/releases/latest`;
+  const release = await getJsonFromUrl(apiUrl);
+  if (!release || typeof release.tag_name !== "string" || !release.tag_name.trim()) {
+    throw new Error("GitHub release payload does not include tag_name");
+  }
+  return release;
+}
+
+function quotePowerShellArg(value) {
+  return `"${String(value || "").replace(/"/g, '""')}"`;
+}
+
+async function startUpdateInstaller(context, repo, targetVersion, options = {}) {
+  const scriptPath = path.join(__dirname, "scripts", "update-from-github.ps1");
+  if (!(await pathExists(scriptPath))) {
+    throw new Error(`Update installer not found: ${scriptPath}`);
+  }
+
+  const cfg = getConfig();
+  const currentHframeworkPath = String(cfg.hframeworkPath || process.env.HFRAMEWORK_PATH || "").trim();
+  const deleteOldInstall = Boolean(options.deleteOldInstall);
+  const extensionId = `${context.extension.packageJSON.publisher}.${context.extension.packageJSON.name}`;
+  const terminal = vscode.window.createTerminal({
+    name: "Husarion CORE2 Update"
+  });
+
+  terminal.show(true);
+  terminal.sendText([
+    "powershell",
+    "-ExecutionPolicy", "Bypass",
+    "-File", quotePowerShellArg(scriptPath),
+    "-GitHubRepo", quotePowerShellArg(repo),
+    "-TargetVersion", quotePowerShellArg(targetVersion),
+    "-ExtensionId", quotePowerShellArg(extensionId),
+    "-CurrentHframeworkPath", quotePowerShellArg(currentHframeworkPath),
+    deleteOldInstall ? "-DeleteOldInstall" : ""
+  ].join(" "));
+}
+
+async function checkForUpdates(context, options = {}) {
+  const manual = Boolean(options.manual);
+  const cfg = vscode.workspace.getConfiguration("husarionCore2");
+  const isEnabled = cfg.get("checkUpdatesOnStartup", true);
+  if (!manual && !isEnabled) {
+    return;
+  }
+
+  const now = Date.now();
+  await context.globalState.update(UPDATE_LAST_CHECK_KEY, now);
+
+  const configuredRepo = normalizeGithubRepository(cfg.get("updateRepository", DEFAULT_UPDATE_REPOSITORY));
+  const repo = configuredRepo || DEFAULT_UPDATE_REPOSITORY;
+
+  let release;
+  try {
+    release = await getLatestGitHubRelease(repo);
+  } catch (err) {
+    if (manual) {
+      vscode.window.showErrorMessage(`Update check failed: ${err?.message || String(err)}`);
+    } else {
+      outputChannel.appendLine(`Update check skipped: ${err?.message || String(err)}`);
+    }
+    return;
+  }
+
+  const currentVersion = String(context.extension.packageJSON.version || "0.0.0");
+  const latestVersion = String(release.tag_name || "").trim();
+  if (!latestVersion || compareVersions(latestVersion, currentVersion) <= 0) {
+    if (manual) {
+      vscode.window.showInformationMessage(`Husarion CORE2 Tools is up to date (${currentVersion}).`);
+    }
+    return;
+  }
+
+  const skippedVersion = String(context.globalState.get(UPDATE_SKIPPED_VERSION_KEY, ""));
+  if (!manual && compareVersions(latestVersion, skippedVersion) === 0) {
+    return;
+  }
+
+  const installAndDeleteLabel = "Install update (delete old install)";
+  const installAndKeepLabel = "Install update (keep old install)";
+  const skipLabel = "Skip this version";
+  const openReleaseLabel = "Open release notes";
+
+  const choice = await vscode.window.showInformationMessage(
+    `A newer Husarion CORE2 Tools release is available (${latestVersion}, current ${currentVersion}).`,
+    installAndDeleteLabel,
+    installAndKeepLabel,
+    skipLabel,
+    openReleaseLabel
+  );
+
+  if (choice === skipLabel) {
+    await context.globalState.update(UPDATE_SKIPPED_VERSION_KEY, latestVersion);
+    return;
+  }
+
+  if (choice === openReleaseLabel && release.html_url) {
+    await vscode.env.openExternal(vscode.Uri.parse(String(release.html_url)));
+    return;
+  }
+
+  if (choice === installAndDeleteLabel || choice === installAndKeepLabel) {
+    await context.globalState.update(UPDATE_SKIPPED_VERSION_KEY, "");
+    await startUpdateInstaller(context, repo, latestVersion, {
+      deleteOldInstall: choice === installAndDeleteLabel
+    });
+    vscode.window.showInformationMessage("Update installer started in terminal. Reload VS Code after installation completes.");
+  }
+}
+
+async function checkForUpdatesOnStartup(context) {
+  outputChannel.appendLine("Startup update check running...");
+  await checkForUpdates(context, { manual: false });
+}
+
+async function checkForUpdatesCommand(context) {
+  await checkForUpdates(context, { manual: true });
 }
 
 function tryWhereExe(name) {
@@ -185,6 +398,52 @@ async function shouldRunCmakeConfigure(sourceDir, buildDir) {
   const sourceCmakeMtime = await getFileMtimeMs(sourceCmake);
 
   return sourceCmakeMtime > cacheMtime;
+}
+
+function normalizePathForCompare(p) {
+  return path.normalize(String(p || "")).replace(/[\\/]+$/, "").toLowerCase();
+}
+
+async function removeDirectoryIfExists(dirPath) {
+  if (!(await pathExists(dirPath))) {
+    return;
+  }
+  await fsp.rm(dirPath, { recursive: true, force: true });
+}
+
+async function readCmakeCacheHomeDirectory(buildDir) {
+  const cachePath = path.join(buildDir, "CMakeCache.txt");
+  const text = await readTextIfExists(cachePath);
+  if (!text) {
+    return "";
+  }
+
+  const m = text.match(/^CMAKE_HOME_DIRECTORY:INTERNAL=(.+)$/m);
+  if (!m || !m[1]) {
+    return "";
+  }
+
+  return path.normalize(m[1].trim());
+}
+
+async function ensureBuildDirMatchesSource(sourceDir, buildDir, label) {
+  const cachedHome = await readCmakeCacheHomeDirectory(buildDir);
+  if (!cachedHome) {
+    return false;
+  }
+
+  const currentNormalized = normalizePathForCompare(sourceDir);
+  const cachedNormalized = normalizePathForCompare(cachedHome);
+  if (currentNormalized === cachedNormalized) {
+    return false;
+  }
+
+  outputChannel.appendLine(
+    `Detected stale ${label} build cache. Cached source='${cachedHome}', current='${sourceDir}'. Cleaning '${buildDir}'.`
+  );
+  await removeDirectoryIfExists(buildDir);
+  await ensureDir(buildDir);
+  return true;
 }
 
 async function resolveHframeworkPath(projectRoot, cfg) {
@@ -367,6 +626,14 @@ function runCommand(command, args, cwd) {
   return new Promise((resolve, reject) => {
     const pretty = `${command} ${args.join(" ")}`;
     outputChannel.appendLine(`> ${pretty}`);
+    let outputTail = "";
+
+    const appendTail = (text) => {
+      outputTail += text;
+      if (outputTail.length > 12000) {
+        outputTail = outputTail.slice(-12000);
+      }
+    };
 
     const child = cp.spawn(command, args, {
       cwd,
@@ -374,14 +641,24 @@ function runCommand(command, args, cwd) {
       windowsHide: true
     });
 
-    child.stdout.on("data", (d) => outputChannel.append(d.toString()));
-    child.stderr.on("data", (d) => outputChannel.append(d.toString()));
+    child.stdout.on("data", (d) => {
+      const text = d.toString();
+      outputChannel.append(text);
+      appendTail(text);
+    });
+    child.stderr.on("data", (d) => {
+      const text = d.toString();
+      outputChannel.append(text);
+      appendTail(text);
+    });
     child.on("error", (err) => reject(err));
     child.on("close", (code) => {
       if (code === 0) {
         resolve();
       } else {
-        reject(new Error(`Command failed (${code}): ${pretty}`));
+        const trimmedTail = outputTail.trim();
+        const details = trimmedTail ? `\n${trimmedTail}` : "";
+        reject(new Error(`Command failed (${code}): ${pretty}${details}`));
       }
     });
   });
@@ -390,6 +667,37 @@ function runCommand(command, args, cwd) {
 function isMissingLibraryLinkError(err) {
   const msg = String(err && err.message ? err.message : err || "");
   return /cannot find -lhFramework|cannot find -lhSensors|cannot find -lhModules/i.test(msg);
+}
+
+function isStaleCmakeBuildPathError(err) {
+  const msg = String(err && err.message ? err.message : err || "").toLowerCase();
+  return msg.includes("does not appear to contain cmakelists.txt")
+    || (msg.includes("the source directory") && msg.includes("cmakelists"))
+    || (msg.includes("--regenerate-during-build") && msg.includes("subcommand failed"))
+    || (msg.includes("cmakecache.txt") && msg.includes("different source"));
+}
+
+async function showBuildErrorWithRebuildSuggestion(prefix, err) {
+  const message = String(err && err.message ? err.message : err || "");
+  if (!isStaleCmakeBuildPathError(message)) {
+    vscode.window.showErrorMessage(`${prefix}: ${message}`);
+    return;
+  }
+
+  const choice = await vscode.window.showErrorMessage(
+    `${prefix}: stale CMake/build paths were detected (often after moving installation folders). Run full rebuild now?`,
+    "Rebuild now",
+    "Show details"
+  );
+
+  if (choice === "Rebuild now") {
+    await rebuildProjectCommand();
+    return;
+  }
+
+  if (choice === "Show details") {
+    vscode.window.showErrorMessage(`${prefix}: ${message}`);
+  }
 }
 
 function boardTypeToDefineValue(boardType) {
@@ -664,12 +972,20 @@ async function resolveModulePath(moduleName, cfg) {
   return "";
 }
 
+async function getResolvedModulePaths(cfg) {
+  return {
+    hSensors: await resolveModulePath("hSensors", cfg),
+    hModules: await resolveModulePath("hModules", cfg)
+  };
+}
+
 async function ensureModuleBuilt(moduleName, modulePath, cfg) {
   const tools = getResolvedToolPaths();
   const moduleBuildDir = path.join(modulePath, "build", `stm32_${cfg.boardType}_1.0.0`);
   const expectedLib = path.join(moduleBuildDir, `lib${moduleName}.a`);
 
   await ensureDir(moduleBuildDir);
+  await ensureBuildDirMatchesSource(modulePath, moduleBuildDir, moduleName);
 
   if (await shouldRunCmakeConfigure(modulePath, moduleBuildDir)) {
     await runCommand(tools.cmake, [
@@ -705,6 +1021,7 @@ async function ensureFrameworkBuilt(cfg) {
   const expectedLib = path.join(frameworkBuildDir, "libhFramework.a");
 
   await ensureDir(frameworkBuildDir);
+  await ensureBuildDirMatchesSource(frameworkPath, frameworkBuildDir, "hFramework");
 
   if (await shouldRunCmakeConfigure(frameworkPath, frameworkBuildDir)) {
     await runCommand(tools.cmake, [
@@ -819,6 +1136,7 @@ async function configureAndBuildProject(projectRoot, cfg) {
   }
   const buildDir = path.join(projectRoot, "build");
   await ensureDir(buildDir);
+  await ensureBuildDirMatchesSource(projectRoot, buildDir, "project");
 
   const cmakePath = path.join(projectRoot, "CMakeLists.txt");
   let cmakeText = await readTextIfExists(cmakePath);
@@ -827,10 +1145,7 @@ async function configureAndBuildProject(projectRoot, cfg) {
 
   await ensureFrameworkBuilt(cfg);
 
-  const resolvedModulePaths = {
-    hSensors: await resolveModulePath("hSensors", cfg),
-    hModules: await resolveModulePath("hModules", cfg)
-  };
+  const resolvedModulePaths = await getResolvedModulePaths(cfg);
 
   for (const modulePath of Object.values(resolvedModulePaths)) {
     if (!modulePath) {
@@ -907,6 +1222,55 @@ async function configureAndBuildProject(projectRoot, cfg) {
     await runCommand(tools.ninja, ["-C", buildDir, `${targetName}.hex`], projectRoot);
   }
   return buildDir;
+}
+
+function uniquePaths(paths) {
+  const seen = new Set();
+  const out = [];
+  for (const p of paths) {
+    const normalized = path.normalize(String(p || ""));
+    if (!normalized) {
+      continue;
+    }
+    const key = normalizePathForCompare(normalized);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(normalized);
+  }
+  return out;
+}
+
+async function cleanAllBuildDirs(projectRoot, cfg) {
+  const resolvedModulePaths = await getResolvedModulePaths(cfg);
+  const buildDirs = uniquePaths([
+    path.join(projectRoot, "build"),
+    path.join(cfg.hframeworkPath, "build"),
+    resolvedModulePaths.hSensors ? path.join(resolvedModulePaths.hSensors, "build") : "",
+    resolvedModulePaths.hModules ? path.join(resolvedModulePaths.hModules, "build") : ""
+  ]);
+
+  for (const dirPath of buildDirs) {
+    if (await pathExists(dirPath)) {
+      outputChannel.appendLine(`Removing build directory: ${dirPath}`);
+      await removeDirectoryIfExists(dirPath);
+    }
+  }
+}
+
+async function rebuildProjectCommand() {
+  const root = getWorkspaceProjectRoot();
+  if (!root) {
+    vscode.window.showErrorMessage("Open a Husarion project folder first.");
+    return;
+  }
+
+  const cfg = await buildResolvedConfig(root);
+  outputChannel.show(true);
+  await cleanAllBuildDirs(root, cfg);
+  await configureAndBuildProject(root, cfg);
+  vscode.window.showInformationMessage("Rebuild completed and HEX generated.");
 }
 
 function getWorkspaceProjectRoot() {
@@ -1121,7 +1485,9 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand("husarionCore2.buildProject", () => {
       buildProjectCommand().catch((err) => {
-        vscode.window.showErrorMessage(`Build failed: ${err?.message || String(err)}`);
+        showBuildErrorWithRebuildSuggestion("Build failed", err).catch((handlerErr) => {
+          vscode.window.showErrorMessage(`Build failed: ${handlerErr?.message || String(handlerErr)}`);
+        });
       });
     })
   );
@@ -1129,7 +1495,17 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand("husarionCore2.flashProject", () => {
       flashProjectCommand().catch((err) => {
-        vscode.window.showErrorMessage(`Flash failed: ${err?.message || String(err)}`);
+        showBuildErrorWithRebuildSuggestion("Flash failed", err).catch((handlerErr) => {
+          vscode.window.showErrorMessage(`Flash failed: ${handlerErr?.message || String(handlerErr)}`);
+        });
+      });
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("husarionCore2.rebuildProject", () => {
+      rebuildProjectCommand().catch((err) => {
+        vscode.window.showErrorMessage(`Rebuild failed: ${err?.message || String(err)}`);
       });
     })
   );
@@ -1157,6 +1533,20 @@ function activate(context) {
       });
     })
   );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("husarionCore2.checkForUpdates", () => {
+      checkForUpdatesCommand(context).catch((err) => {
+        vscode.window.showErrorMessage(`Update check failed: ${err?.message || String(err)}`);
+      });
+    })
+  );
+
+  setTimeout(() => {
+    checkForUpdatesOnStartup(context).catch((err) => {
+      outputChannel.appendLine(`Update check failed: ${err?.message || String(err)}`);
+    });
+  }, 1500);
 }
 
 function deactivate() {}

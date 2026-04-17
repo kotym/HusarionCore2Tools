@@ -14,6 +14,17 @@ $extRoot = Join-Path $repoRoot 'tools\vscode-husarion-core2'
 $packageJsonPath = Join-Path $extRoot 'package.json'
 $depsScript = Join-Path $extRoot 'scripts\install-or-refresh-toolchain.ps1'
 
+function Get-UserProfilePath {
+    $profilePath = [Environment]::GetFolderPath('UserProfile')
+    if (-not $profilePath) {
+        $profilePath = $env:USERPROFILE
+    }
+    if (-not $profilePath) {
+        throw 'Could not resolve user profile path.'
+    }
+    return $profilePath
+}
+
 function Set-DefaultHusarionSettings {
     $vscodeUserDir = Join-Path $env:APPDATA 'Code\User'
     $settingsPath = Join-Path $vscodeUserDir 'settings.json'
@@ -94,7 +105,7 @@ function Install-LocalExtension {
     $pkg = Get-Content $packageJsonPath -Raw | ConvertFrom-Json
     $folderName = "$($pkg.publisher).$($pkg.name)-$($pkg.version)"
     $extensionId = "$($pkg.publisher).$($pkg.name)"
-    $extensionsRoot = Join-Path $env:USERPROFILE '.vscode\extensions'
+    $extensionsRoot = Join-Path (Join-Path (Get-UserProfilePath) '.vscode') 'extensions'
     $targetFolder = Join-Path $extensionsRoot $folderName
     $sourceFiles = @('package.json', 'extension.js', 'README.md', 'scripts')
     $vsixName = "$($pkg.publisher).$($pkg.name)-$($pkg.version).vsix"
@@ -123,6 +134,7 @@ function Install-LocalExtension {
                 if ($installed) {
                     Write-Host ''
                     Write-Host 'Extension installation complete (VSIX).' -ForegroundColor Green
+                    Write-Host 'Toolchain installation...'
                     return
                 }
                 Write-Host '  [WARN] VSIX command succeeded but extension was not listed yet. Falling back to folder install.' -ForegroundColor Yellow

@@ -54,6 +54,11 @@ powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1
 
 3. Restart VS Code.
 4. Use Command Palette commands starting with `Husarion:`.
+5. If build breaks after moving installation folder paths, run `Husarion: Rebuild Project (Clean All Build Dirs)`.
+
+The extension checks GitHub releases on startup and can offer in-editor update installation.
+To disable this behavior, set `husarionCore2.checkUpdatesOnStartup` to `false` in VS Code settings.
+The update prompt offers `delete old install` and `keep old install` modes for the previous bundle directory.
 
 For flashing install zadig and replace drivers following this tutorial: https://husarion.com/tutorials/deprecated/offline-development-tools/
 
@@ -80,6 +85,7 @@ code --install-extension .\tools\vscode-husarion-core2\dist\<publisher>.<name>-<
 - Source release builder: `tools\install\build-distribution-package.ps1`
 - Package installer: `tools\install\install-package.ps1`
 - Toolchain refresh helper: `tools\vscode-husarion-core2\scripts\install-or-refresh-toolchain.ps1`
+- GitHub update installer: `tools\vscode-husarion-core2\scripts\update-from-github.ps1`
 - Extension VSIX builder: `tools\vscode-husarion-core2\build-vsix.ps1`
 
 ## Troubleshooting
