@@ -4,6 +4,7 @@ const fsp = require("fs/promises");
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
+const os = require("os");
 
 let outputChannel;
 
@@ -123,6 +124,11 @@ async function startUpdateInstaller(context, repo, targetVersion, options = {}) 
     throw new Error(`Update installer not found: ${scriptPath}`);
   }
 
+  // Run updater from a temp copy so extension self-update does not touch the executing script file.
+  const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "husarion-core2-updater-"));
+  const tempScriptPath = path.join(tempDir, "update-from-github.ps1");
+  await fsp.copyFile(scriptPath, tempScriptPath);
+
   const cfg = getConfig();
   const currentHframeworkPath = String(cfg.hframeworkPath || process.env.HFRAMEWORK_PATH || "").trim();
   const deleteOldInstall = Boolean(options.deleteOldInstall);
@@ -132,10 +138,11 @@ async function startUpdateInstaller(context, repo, targetVersion, options = {}) 
   });
 
   terminal.show(true);
+  outputChannel.appendLine(`Update script copied to temp path: ${tempScriptPath}`);
   terminal.sendText([
     "powershell",
     "-ExecutionPolicy", "Bypass",
-    "-File", quotePowerShellArg(scriptPath),
+    "-File", quotePowerShellArg(tempScriptPath),
     "-GitHubRepo", quotePowerShellArg(repo),
     "-TargetVersion", quotePowerShellArg(targetVersion),
     "-ExtensionId", quotePowerShellArg(extensionId),

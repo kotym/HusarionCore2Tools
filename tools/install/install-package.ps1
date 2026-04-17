@@ -2,6 +2,7 @@ param(
     [switch]$SkipExtensionInstall,
     [switch]$SkipToolchainInstall,
     [switch]$KeepOtherExtensionVersions,
+    [switch]$NoFolderFallback,
     [switch]$SkipCppToolsExtension,
     [string]$OfflineBundleDir = ''
 )
@@ -23,6 +24,53 @@ function Get-UserProfilePath {
         throw 'Could not resolve user profile path.'
     }
     return $profilePath
+}
+
+function Normalize-VscodeExtensionsPath {
+    param([string]$PathValue)
+
+    if (-not $PathValue) {
+        return ''
+    }
+
+    $expanded = [Environment]::ExpandEnvironmentVariables($PathValue.Trim().Trim('"'))
+    if (-not $expanded) {
+        return ''
+    }
+
+    # Repair common malformed value: C:\Users\name.vscode\extensions
+    if ($expanded -match '^(?<base>[A-Za-z]:\\Users\\[^\\]+)\.vscode\\extensions$') {
+        return "$($matches.base)\\.vscode\\extensions"
+    }
+
+    return $expanded
+}
+
+function Get-ExtensionsRoot {
+    $fromEnv = Normalize-VscodeExtensionsPath $env:VSCODE_EXTENSIONS
+    if ($fromEnv) {
+        return $fromEnv
+    }
+
+    return Join-Path (Join-Path (Get-UserProfilePath) '.vscode') 'extensions'
+}
+
+function Repair-VscodeExtensionsEnv {
+    $currentUserValue = [Environment]::GetEnvironmentVariable('VSCODE_EXTENSIONS', 'User')
+    if (-not $currentUserValue) {
+        return
+    }
+
+    $fixed = Normalize-VscodeExtensionsPath $currentUserValue
+    if (-not $fixed) {
+        return
+    }
+
+    if ($fixed -ne $currentUserValue) {
+        [Environment]::SetEnvironmentVariable('VSCODE_EXTENSIONS', $fixed, 'User')
+        $env:VSCODE_EXTENSIONS = $fixed
+        Write-Host "==> Repaired user VSCODE_EXTENSIONS path: $fixed"
+    }
 }
 
 function Set-DefaultHusarionSettings {
@@ -74,25 +122,90 @@ function Set-DefaultHusarionSettings {
 
 function Get-CodeCliPath {
     $candidates = @(
-        'code',
         (Join-Path $env:LOCALAPPDATA 'Programs\Microsoft VS Code\bin\code.cmd'),
         (Join-Path $env:LOCALAPPDATA 'Programs\Microsoft VS Code\bin\code'),
+        (Join-Path $env:ProgramFiles 'Microsoft VS Code\bin\code.cmd'),
+        (Join-Path $env:ProgramFiles 'Microsoft VS Code\bin\code'),
         (Join-Path $env:LOCALAPPDATA 'Programs\Microsoft VS Code Insiders\bin\code-insiders.cmd'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\Microsoft VS Code Insiders\bin\code-insiders')
+        (Join-Path $env:LOCALAPPDATA 'Programs\Microsoft VS Code Insiders\bin\code-insiders'),
+        (Join-Path $env:ProgramFiles 'Microsoft VS Code Insiders\bin\code-insiders.cmd'),
+        (Join-Path $env:ProgramFiles 'Microsoft VS Code Insiders\bin\code-insiders')
     )
 
     foreach ($candidate in $candidates) {
-        if ($candidate -eq 'code') {
-            if (Get-Command code -ErrorAction SilentlyContinue) {
-                return 'code'
-            }
-        }
-        elseif (Test-Path $candidate) {
+        if ($candidate -and (Test-Path $candidate)) {
             return $candidate
         }
     }
 
+    $cmd = Get-Command code -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) {
+        $source = $cmd.Source
+        if ($source -match 'code(\-insiders)?\.cmd$') {
+            return $source
+        }
+
+        # If PowerShell resolves `code` to Code.exe, prefer adjacent bin\code.cmd.
+        if ($source -match 'Code(\s+-\s+Insiders)?\.exe$') {
+            $exeDir = Split-Path -Parent $source
+            $cmdCandidate = Join-Path $exeDir 'bin\code.cmd'
+            if (Test-Path $cmdCandidate) {
+                return $cmdCandidate
+            }
+        }
+
+        return $source
+    }
+
     return $null
+}
+
+function Invoke-CodeCli {
+    param(
+        [Parameter(Mandatory = $true)][string]$CodeCli,
+        [Parameter(Mandatory = $true)][string[]]$Arguments
+    )
+
+    $varsToClear = @('VSCODE_IPC_HOOK_CLI', 'VSCODE_IPC_HOOK_EXTHOST', 'VSCODE_CWD')
+    $saved = @{}
+
+    foreach ($name in $varsToClear) {
+        $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+        [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+    }
+
+    try {
+        return @(& $CodeCli @Arguments 2>&1)
+    }
+    finally {
+        foreach ($name in $varsToClear) {
+            [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process')
+        }
+    }
+}
+
+function Remove-OtherExtensionFolders {
+    param(
+        [Parameter(Mandatory = $true)][string]$ExtensionsRoot,
+        [Parameter(Mandatory = $true)][string]$ExtensionId,
+        [Parameter(Mandatory = $true)][string]$KeepFolderName,
+        [switch]$KeepOtherVersions
+    )
+
+    if ($KeepOtherVersions) {
+        return
+    }
+
+    $pattern = "$ExtensionId-*"
+    Get-ChildItem -Path $ExtensionsRoot -Directory -Filter $pattern -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            if ($_.Name -ieq $KeepFolderName) {
+                return
+            }
+
+            Write-Host "==> Removing old extension: $($_.FullName)"
+            Remove-Item $_.FullName -Recurse -Force
+        }
 }
 
 function Install-LocalExtension {
@@ -105,7 +218,7 @@ function Install-LocalExtension {
     $pkg = Get-Content $packageJsonPath -Raw | ConvertFrom-Json
     $folderName = "$($pkg.publisher).$($pkg.name)-$($pkg.version)"
     $extensionId = "$($pkg.publisher).$($pkg.name)"
-    $extensionsRoot = Join-Path (Join-Path (Get-UserProfilePath) '.vscode') 'extensions'
+    $extensionsRoot = Get-ExtensionsRoot
     $targetFolder = Join-Path $extensionsRoot $folderName
     $sourceFiles = @('package.json', 'extension.js', 'README.md', 'scripts')
     $vsixName = "$($pkg.publisher).$($pkg.name)-$($pkg.version).vsix"
@@ -116,10 +229,16 @@ function Install-LocalExtension {
     # First, prefer VSIX install via VS Code extension manager.
     $codeCli = Get-CodeCliPath
     if ($codeCli -and (Test-Path $vsixPath)) {
+        Write-Host "  Using VS Code CLI: $codeCli"
+        Write-Host "  Extensions directory: $extensionsRoot"
         Write-Host "  Installing VSIX via VS Code extension manager: $vsixPath"
         $vsixExitCode = 1
+        $vsixOutput = @()
         try {
-            & $codeCli --install-extension $vsixPath --force
+            $vsixOutput = Invoke-CodeCli -CodeCli $codeCli -Arguments @('--install-extension', $vsixPath, '--force', '--extensions-dir', $extensionsRoot)
+            foreach ($line in $vsixOutput) {
+                Write-Host "  $line"
+            }
             if (Test-Path variable:LASTEXITCODE) {
                 $vsixExitCode = $LASTEXITCODE
             }
@@ -130,8 +249,9 @@ function Install-LocalExtension {
 
         if ($vsixExitCode -eq 0) {
             try {
-                $installed = (& $codeCli --list-extensions 2>$null) | Where-Object { $_ -eq $extensionId }
+                $installed = (Invoke-CodeCli -CodeCli $codeCli -Arguments @('--list-extensions', '--extensions-dir', $extensionsRoot)) | Where-Object { $_ -eq $extensionId }
                 if ($installed) {
+                    Remove-OtherExtensionFolders -ExtensionsRoot $extensionsRoot -ExtensionId $extensionId -KeepFolderName $folderName -KeepOtherVersions:$KeepOtherVersions
                     Write-Host ''
                     Write-Host 'Extension installation complete (VSIX).' -ForegroundColor Green
                     Write-Host 'Toolchain installation...'
@@ -142,6 +262,20 @@ function Install-LocalExtension {
             catch {
                 Write-Host '  [WARN] Could not verify VSIX install via code --list-extensions. Falling back to folder install.' -ForegroundColor Yellow
             }
+        }
+
+        $vsixDetails = ''
+        if ($vsixOutput -and $vsixOutput.Count -gt 0) {
+            $vsixDetails = ($vsixOutput | Out-String).Trim()
+        }
+
+        Write-Host "  VSIX installer exit code: $vsixExitCode"
+
+        if ($NoFolderFallback) {
+            if ($vsixDetails) {
+                throw "VSIX installation failed and folder fallback is disabled. CLI output:`n$vsixDetails"
+            }
+            throw 'VSIX installation failed and folder fallback is disabled.'
         }
 
         Write-Host '  [WARN] VSIX installation failed. Falling back to folder install.' -ForegroundColor Yellow
@@ -158,14 +292,7 @@ function Install-LocalExtension {
 
     New-Item -ItemType Directory -Path $extensionsRoot -Force | Out-Null
 
-    if (-not $KeepOtherVersions) {
-        $pattern = "$($pkg.publisher).$($pkg.name)-*"
-        Get-ChildItem -Path $extensionsRoot -Directory -Filter $pattern -ErrorAction SilentlyContinue |
-            ForEach-Object {
-                Write-Host "==> Removing old extension: $($_.FullName)"
-                Remove-Item $_.FullName -Recurse -Force
-            }
-    }
+    Remove-OtherExtensionFolders -ExtensionsRoot $extensionsRoot -ExtensionId $extensionId -KeepFolderName $folderName -KeepOtherVersions:$KeepOtherVersions
 
     if (Test-Path $targetFolder) {
         Remove-Item $targetFolder -Recurse -Force
@@ -183,6 +310,12 @@ function Install-LocalExtension {
 
 
 Write-Host "==> Using repo root: $repoRoot"
+Repair-VscodeExtensionsEnv
+
+if (-not $NoFolderFallback -and $env:HUSARION_UPDATE_MODE -eq '1') {
+    $NoFolderFallback = $true
+    Write-Host '==> Update mode detected: folder fallback disabled for safe self-update.'
+}
 
 if (-not $SkipExtensionInstall) {
     Install-LocalExtension -KeepOtherVersions:$KeepOtherExtensionVersions

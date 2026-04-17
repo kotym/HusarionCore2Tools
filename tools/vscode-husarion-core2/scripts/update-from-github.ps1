@@ -177,18 +177,19 @@ try {
     Write-Host "==> Moving extracted package to: $newInstallRoot"
     Move-Item -Path $extractedRoot -Destination $newInstallRoot
 
-    $installScript = Join-Path $newInstallRoot 'tools\install\install-package.ps1'
-    if (-not (Test-Path $installScript)) {
-        throw "Installer script not found in new package: $installScript"
+    $newInstallBat = Join-Path $newInstallRoot 'install.bat'
+    if (-not (Test-Path $newInstallBat)) {
+        throw "Installer batch file not found in new package: $newInstallBat"
     }
 
-    Write-Host "==> Running package installer from: $installScript"
-    & powershell -ExecutionPolicy Bypass -File $installScript -SkipToolchainInstall
-    if ((Test-Path variable:LASTEXITCODE) -and $LASTEXITCODE -ne 0) {
-        throw "Installer exited with code $LASTEXITCODE."
+    Write-Host "==> Running package installer from: $newInstallBat"
+    $cmdToRun = "set VSCODE_IPC_HOOK_CLI=& set VSCODE_IPC_HOOK_EXTHOST=& set VSCODE_CWD=& set VSCODE_EXTENSIONS=& set HUSARION_UPDATE_MODE=1& echo.|`"$newInstallBat`""
+    $installProcess = Start-Process -FilePath 'cmd.exe' -ArgumentList '/d', '/c', $cmdToRun -WorkingDirectory $newInstallRoot -Wait -PassThru -NoNewWindow
+    if ($installProcess.ExitCode -ne 0) {
+        throw "Installer exited with code $($installProcess.ExitCode)."
     }
 
-    Write-Host '==> Extension version cleanup is handled by install-package.ps1 during installation.'
+    Write-Host '==> Extension cleanup inside VS Code extensions directory is handled by install.bat/install-package.ps1.'
 
     if ($DeleteOldInstall) {
         if ($currentInstallRoot -and (Test-Path $currentInstallRoot) -and ($currentInstallRoot -ine $newInstallRoot)) {

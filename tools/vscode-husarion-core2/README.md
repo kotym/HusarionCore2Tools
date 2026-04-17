@@ -67,6 +67,7 @@ To disable startup update checks, set `husarionCore2.checkUpdatesOnStartup` to `
 - If commands are missing in the Command Palette, restart VS Code.
 - If build tools are missing, run `Husarion: Install Required Toolchain and Components`.
 - If toolchain was just installed, restart VS Code so PATH updates are picked up.
-- Updates are installed from a GitHub release ZIP and run through package `tools/install/install-package.ps1` in an update terminal.
+- Updates are installed from a GitHub release ZIP and run through package `install.bat` in an update terminal.
 - Updates install into the same parent directory as the current `HFRAMEWORK_PATH` installation.
+- Extension cleanup in `%USERPROFILE%\.vscode\extensions` is handled by `install.bat` / `tools/install/install-package.ps1`.
 - If build fails after moving installation folders (for example path rename), use `Husarion: Rebuild Project (Clean All Build Dirs)`.

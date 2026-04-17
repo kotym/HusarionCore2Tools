@@ -59,6 +59,7 @@ powershell -ExecutionPolicy Bypass -File .\tools\install\install-package.ps1
 The extension checks GitHub releases on startup and can offer in-editor update installation.
 To disable this behavior, set `husarionCore2.checkUpdatesOnStartup` to `false` in VS Code settings.
 The update prompt offers `delete old install` and `keep old install` modes for the previous bundle directory.
+Automatic update downloads and extracts a new bundle, then runs `install.bat` from that new bundle path.
 
 For flashing install zadig and replace drivers following this tutorial: https://husarion.com/tutorials/deprecated/offline-development-tools/
 
