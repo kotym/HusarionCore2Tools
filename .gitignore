@@ -25,7 +25,7 @@ Thumbs.db
 **/*.a
 **/*.so
 **/*.dylib
-**/*.dll
+#**/*.dll
 **/*.lib
 **/*.exp
 **/*.pdb

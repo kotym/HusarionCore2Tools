@@ -29,7 +29,6 @@ rules.ninja
 .ninja_deps
 .ninja_log
 dist.zip
-tools/
 libs/
 *.bat
 /robocore

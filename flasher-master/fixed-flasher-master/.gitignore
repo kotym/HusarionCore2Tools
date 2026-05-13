@@ -1,0 +1,16 @@
+CMakeFiles
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.out
+*.o
+*.bin
+*.elf
+*.map
+bin
+flasher
+main.bin
+flasher_hard
+gen/
+/build/
+robocore-flasher
